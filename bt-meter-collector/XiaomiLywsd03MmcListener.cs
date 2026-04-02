@@ -5,6 +5,7 @@ using Tmds.DBus;
 public interface IAdapter1 : IDBusObject
 {
     Task StartDiscoveryAsync();
+    Task SetDiscoveryFilterAsync(IDictionary<string, object> properties);
 }
 
 [DBusInterface("org.freedesktop.DBus.ObjectManager")]
@@ -55,6 +56,12 @@ internal sealed class XiaomiLywsd03MmcListener
         {
             if (sig.interfaces.ContainsKey("org.bluez.Device1"))
                 _ = AttachDeviceAsync(bus, sig.path, cancellationToken);
+        }).Wait(cancellationToken);
+        
+        adapter.SetDiscoveryFilterAsync(new Dictionary<string, object>
+        {
+            ["Transport"] = "le",
+            ["DuplicateData"] = true
         }).Wait(cancellationToken);
 
         adapter.StartDiscoveryAsync().Wait(cancellationToken);
