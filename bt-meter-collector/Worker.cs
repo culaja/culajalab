@@ -1,33 +1,33 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+namespace bt_meter_collector;
 
 internal sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private XiaomiLywsd03MmcListener? _listener;
+    private readonly XiaomiLywsd03MmcListener _listener;
+    private readonly HomeAssistantSensorMqttPublisher _mqttPublisher;
 
-    public Worker(ILogger<Worker> logger)
+    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration)
     {
         _logger = logger;
+        _listener = new XiaomiLywsd03MmcListener(DeviceAppeared, SampleReceived);
+        _mqttPublisher = new HomeAssistantSensorMqttPublisher(logger, mqttConfiguration);
+    }
+
+    private Task DeviceAppeared(string mac, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation($"Device appeared: {mac}");
+        return _mqttPublisher.RegisterSensorAsync(mac, cancellationToken);
+    }
+
+    private Task SampleReceived(Sample sample, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Sample received: {@Sample}", sample);
+        return _mqttPublisher.PublishSampleAsync(sample, cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _listener = new XiaomiLywsd03MmcListener(
-            async (mac, ct) =>
-            {
-                _logger.LogInformation("Device appeared: {Mac}", mac);
-                await Task.CompletedTask;
-            },
-            async (sample, ct) =>
-            {
-                _logger.LogInformation(
-                    "Sample mac={Mac} rssi={Rssi} temp={Temp} hum={Hum} battMv={BattMv} battPct={BattPct}",
-                    sample.Mac, sample.Rssi, sample.Temperature, sample.Humidity, sample.BattMv, sample.BattPct);
-                await Task.CompletedTask;
-            });
-
-        await _listener.StartListeningAsync(stoppingToken);
+        _listener.StartListening(stoppingToken);
 
         try
         {
@@ -38,11 +38,8 @@ internal sealed class Worker : BackgroundService
         }
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public override Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_listener is not null)
-            await _listener.DisposeAsync();
-
-        await base.StopAsync(cancellationToken);
+        return Task.CompletedTask;
     }
 }
