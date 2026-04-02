@@ -19,7 +19,7 @@ public interface IObjectManager : IDBusObject
 [DBusInterface("org.freedesktop.DBus.Properties")]
 public interface IProperties : IDBusObject
 {
-    Task<IDictionary<string, object>> GetAllAsync(string iface);
+    Task<IDictionary<string, object>> GetAllAsync();
     
     Task<IDisposable> WatchPropertiesChangedAsync(
         Action<(string iface, IDictionary<string, object> changed, string[] invalidated)> handler);
@@ -75,7 +75,7 @@ internal sealed class XiaomiLywsd03MmcListener
 
         var props = bus.CreateProxy<IProperties>("org.bluez", path);
         
-        var current = await props.GetAllAsync("org.bluez.Device1");
+        var current = await props.GetAllAsync();
         Console.WriteLine($"Initial props for {path}: {string.Join(", ", current.Keys)}");
         
         const string PvvxUuid = "0000181a-0000-1000-8000-00805f9b34fb";
