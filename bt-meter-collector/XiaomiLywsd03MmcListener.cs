@@ -85,38 +85,40 @@ internal sealed class XiaomiLywsd03MmcRawListener
 
     private async Task ProcessRawHciPacket(ReadOnlyMemory<byte> packet, CancellationToken ct)
     {
-        // 1. Check header without storing the span as a long-lived local
+        // 1. Provera headera direktno preko packet.Span
         if (packet.Length < 15 || 
             packet.Span[0] != 0x04 || 
             packet.Span[1] != 0x3E || 
             packet.Span[3] != 0x02) return;
 
-        // 2. Extract MAC and RSSI (use packet.Span just for the extraction)
-        string mac;
-        short rssi;
-        {
-            var span = packet.Span;
-            mac = string.Join(":", span.Slice(7, 6).ToArray().Reverse().Select(b => b.ToString("X2")));
-            rssi = (short)span[span.Length - 1];
-        }
+        // 2. Izvlačenje MAC i RSSI (ne koristimo Span varijablu)
+        string mac = string.Join(":", packet.Span.Slice(6, 6).ToArray().Reverse().Select(b => b.ToString("X2")));
+        sbyte rssi = (sbyte)packet.Span[packet.Length - 1];
 
-        // 3. Use packet (ReadOnlyMemory) for the loop to allow 'await' inside
+        // 3. Iteracija kroz AD strukture
         int offset = 14; 
         while (offset + 1 < packet.Length - 1)
         {
-            byte len = packet.Span[offset]; // Access span briefly per iteration
-            if (len == 0 || offset + len >= packet.Length) break;
+            // Pristupamo Span-u direktno iz Memory-a u svakoj iteraciji
+            byte len = packet.Span[offset]; 
+            if (len == 0 || offset + len + 1 > packet.Length - 1) break;
 
             byte type = packet.Span[offset + 1];
-            if (type == 0x16 && packet.Span[offset + 2] == 0x1A && packet.Span[offset + 3] == 0x18)
+        
+            if (type == 0x16 && 
+                offset + 3 < packet.Length &&
+                packet.Span[offset + 2] == 0x1A && 
+                packet.Span[offset + 3] == 0x18)
             {
                 var payload = packet.Slice(offset + 4, len - 3).ToArray();
-                await ParseAndEmit(mac, rssi, payload, ct); // Now this works!
+            
+                // Sada 'await' radi jer nema aktivne Span varijable u scope-u
+                await ParseAndEmit(mac, (short)rssi, payload, ct);
             }
+        
             offset += len + 1;
         }
     }
-
 
     private async Task ParseAndEmit(string mac, short rssi, byte[] d, CancellationToken ct)
     {
