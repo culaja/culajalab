@@ -3,13 +3,13 @@ namespace bt_meter_collector;
 internal sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private readonly XiaomiLywsd03MmcListener _listener;
+    private readonly XiaomiLywsd03MmcRawListener _listener;
     private readonly HomeAssistantSensorMqttPublisher _mqttPublisher;
 
     public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration)
     {
         _logger = logger;
-        _listener = new XiaomiLywsd03MmcListener(DeviceAppeared, SampleReceived);
+        _listener = new XiaomiLywsd03MmcRawListener(DeviceAppeared, SampleReceived);
         _mqttPublisher = new HomeAssistantSensorMqttPublisher(logger, mqttConfiguration);
     }
 
@@ -27,7 +27,7 @@ internal sealed class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _listener.StartListeningAsync(stoppingToken);
+        _listener.StartListening(stoppingToken);
 
         try
         {
