@@ -71,8 +71,6 @@ internal sealed class XiaomiLywsd03MmcRawListener
                 int bytesRead = read(fd, buffer, buffer.Length);
                 if (bytesRead > 0)
                 {
-                    string hex = string.Join(" ", buffer.Take(bytesRead).Select(b => $"0x{b:X2}"));
-                    Console.WriteLine($"Received {bytesRead} bytes: {hex}");
                     await ProcessRawHciPacket(buffer.AsMemory(0, bytesRead), ct);
                 }
             }
@@ -90,6 +88,9 @@ internal sealed class XiaomiLywsd03MmcRawListener
             packet.Span[0] != 0x04 || 
             packet.Span[1] != 0x3E || 
             packet.Span[3] != 0x02) return;
+        
+        string hex = string.Join(" ", packet.ToArray().Select(b => $"0x{b:X2}"));
+        Console.WriteLine($"Received bytes: {hex}");
 
         // 2. Izvlačenje MAC i RSSI (ne koristimo Span varijablu)
         string mac = string.Join(":", packet.Span.Slice(6, 6).ToArray().Reverse().Select(b => b.ToString("X2")));
