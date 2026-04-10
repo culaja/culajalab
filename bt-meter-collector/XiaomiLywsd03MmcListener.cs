@@ -62,9 +62,6 @@ internal sealed class XiaomiLywsd03MmcRawListener
             if (setsockopt(fd, SOL_HCI, HCI_FILTER, ref filter, Marshal.SizeOf(filter)) < 0)
                 throw new Exception("Failed to set HCI filter.");
 
-            // Basic BLE Scan Enable Command (Equivalent to 'hcitool lescan --duplicates')
-            EnableScanning(fd);
-
             byte[] buffer = new byte[1024];
             while (!ct.IsCancellationRequested)
             {
@@ -83,64 +80,242 @@ internal sealed class XiaomiLywsd03MmcRawListener
 
     private async Task ProcessRawHciPacket(ReadOnlyMemory<byte> packet, CancellationToken ct)
     {
-        // 1. Provera headera direktno preko packet.Span
-        if (packet.Length < 15 || 
-            packet.Span[0] != 0x04 || 
-            packet.Span[1] != 0x3E || 
-            packet.Span[4] != 0x02) return;
-        
-        string hex = string.Join(" ", packet.ToArray().Select(b => $"0x{b:X2}"));
-        Console.WriteLine($"Received bytes: {hex}");
+        var span = packet.Span;
 
-        // 2. Izvlačenje MAC i RSSI (ne koristimo Span varijablu)
-        string mac = string.Join(":", packet.Span.Slice(6, 6).ToArray().Reverse().Select(b => b.ToString("X2")));
-        sbyte rssi = (sbyte)packet.Span[packet.Length - 1];
+        // Minimum: [packetType][eventCode][paramLen][subevent...]
+        if (span.Length < 4)
+            return;
 
-        // 3. Iteracija kroz AD strukture
-        int offset = 14; 
-        while (offset + 1 < packet.Length - 1)
+        const byte HciEventPkt = 0x04;
+        const byte EvtLeMetaEvent = 0x3E;
+        const byte EvtLeAdvertisingReport = 0x02;
+        const byte EvtLeExtendedAdvertisingReport = 0x0D;
+        const ushort EnvironmentalSensingUuid16 = 0x181A;
+
+        if (span[0] != HciEventPkt)
+            return;
+
+        if (span[1] != EvtLeMetaEvent)
+            return;
+
+        byte subEvent = span[3];
+
+        if (subEvent == EvtLeAdvertisingReport)
         {
-            // Pristupamo Span-u direktno iz Memory-a u svakoj iteraciji
-            byte len = packet.Span[offset]; 
-            if (len == 0 || offset + len + 1 > packet.Length - 1) break;
-
-            byte type = packet.Span[offset + 1];
-        
-            if (type == 0x16 && 
-                offset + 3 < packet.Length &&
-                packet.Span[offset + 2] == 0x1A && 
-                packet.Span[offset + 3] == 0x18)
-            {
-                var payload = packet.Slice(offset + 4, len - 3).ToArray();
-            
-                // Sada 'await' radi jer nema aktivne Span varijable u scope-u
-                await ParseAndEmit(mac, (short)rssi, payload, ct);
-            }
-        
-            offset += len + 1;
+            await ParseLegacyAdvertisingReports(span);
+            return;
         }
-    }
 
-    private async Task ParseAndEmit(string mac, short rssi, byte[] d, CancellationToken ct)
-    {
-        if (_registeredMacs.TryAdd(mac, true))
-            await _deviceAppeared(mac, ct);
+        if (subEvent == EvtLeExtendedAdvertisingReport)
+        {
+            await ParseExtendedAdvertisingReports(span);
+        }
 
-        var sample = new Sample(
-            mac, rssi,
-            BitConverter.ToInt16(d, 6) / 100.0,
-            BitConverter.ToUInt16(d, 8) / 100.0,
-            BitConverter.ToUInt16(d, 10),
-            d[12]
-        );
+        return;
 
-        await _sampleArrived(sample, ct);
-    }
+        Task ParseLegacyAdvertisingReports(ReadOnlySpan<byte> s)
+        {
+            // Format:
+            // [0]=0x04 [1]=0x3E [2]=paramLen [3]=0x02 [4]=numReports ...
+            if (s.Length < 5)
+                return Task.CompletedTask;
 
-    private void EnableScanning(int fd)
-    {
-        // For production, you'd send HCI commands to hci0 to ensure it's in scanning mode.
-        // Simplest way is to ensure 'sudo hcitool lescan --duplicates' is running or use 'hciconfig'
+            int offset = 4;
+            int numReports = s[offset++];
+            for (int i = 0; i < numReports; i++)
+            {
+                // Legacy LE Advertising Report layout:
+                // evt_type(1), addr_type(1), addr(6), data_len(1), data(N), rssi(1)
+                if (offset + 10 > s.Length)
+                    return Task.CompletedTask;
+
+                byte evtType = s[offset++];
+                byte addrType = s[offset++];
+                _ = evtType;
+                _ = addrType;
+
+                string reportMac = FormatMacReversed(s.Slice(offset, 6));
+                offset += 6;
+
+                int dataLen = s[offset++];
+                if (offset + dataLen + 1 > s.Length)
+                    return Task.CompletedTask;
+
+                var adData = s.Slice(offset, dataLen);
+                offset += dataLen;
+
+                short rssi = unchecked((sbyte)s[offset++]);
+
+                if (TryParseMeasurement(adData, reportMac, rssi) is {} sample)
+                {
+                    return _sampleArrived(sample, ct);
+                }
+            }
+            
+            return Task.CompletedTask;
+        }
+
+        Task ParseExtendedAdvertisingReports(ReadOnlySpan<byte> s)
+        {
+            // Format:
+            // [0]=0x04 [1]=0x3E [2]=paramLen [3]=0x0D [4]=numReports ...
+            if (s.Length < 5)
+                return Task.CompletedTask;;
+
+            int offset = 4;
+            int numReports = s[offset++];
+
+            for (int i = 0; i < numReports; i++)
+            {
+                // Extended Advertising Report layout:
+                // event_type(2)
+                // addr_type(1)
+                // addr(6)
+                // primary_phy(1)
+                // secondary_phy(1)
+                // sid(1)
+                // tx_power(1)
+                // rssi(1)
+                // periodic_adv_interval(2)
+                // direct_addr_type(1)
+                // direct_addr(6)
+                // data_len(1)
+                // data(N)
+                const int HeaderLenBeforeDataLen = 24; // bytes after report start up to and including direct_addr
+                if (offset + HeaderLenBeforeDataLen + 1 > s.Length)
+                    return Task.CompletedTask;;
+
+                ushort eventType = ReadUInt16LE(s, offset);
+                offset += 2;
+
+                byte addrType = s[offset++];
+                _ = eventType;
+                _ = addrType;
+
+                string reportMac = FormatMacReversed(s.Slice(offset, 6));
+                offset += 6;
+
+                byte primaryPhy = s[offset++];
+                byte secondaryPhy = s[offset++];
+                byte sid = s[offset++];
+                sbyte txPower = unchecked((sbyte)s[offset++]);
+                short rssi = unchecked((sbyte)s[offset++]);
+                ushort periodicAdvInterval = ReadUInt16LE(s, offset);
+                offset += 2;
+                byte directAddrType = s[offset++];
+                offset += 6; // direct address
+
+                _ = primaryPhy;
+                _ = secondaryPhy;
+                _ = sid;
+                _ = txPower;
+                _ = periodicAdvInterval;
+                _ = directAddrType;
+
+                int dataLen = s[offset++];
+                if (offset + dataLen > s.Length)
+                    return Task.CompletedTask;
+
+                var adData = s.Slice(offset, dataLen);
+                offset += dataLen;
+
+                if (TryParseMeasurement(adData, reportMac, rssi) is { } sample)
+                {
+                    return _sampleArrived(sample, ct);
+                }
+            }
+            
+            return Task.CompletedTask;;
+        }
+
+        Sample? TryParseMeasurement(ReadOnlySpan<byte> adData, string reportMac, short rssi)
+        {
+            int offset = 0;
+
+            while (offset < adData.Length)
+            {
+                int elementLen = adData[offset];
+                offset++;
+
+                if (elementLen == 0)
+                    break;
+
+                if (offset + elementLen > adData.Length)
+                    break;
+
+                byte adType = adData[offset];
+                var elementData = adData.Slice(offset + 1, elementLen - 1);
+                offset += elementLen;
+
+                // 0x16 = Service Data - 16-bit UUID
+                if (adType != 0x16)
+                    continue;
+
+                if (elementData.Length < 2)
+                    continue;
+
+                ushort uuid16 = ReadUInt16LE(elementData, 0);
+                if (uuid16 != EnvironmentalSensingUuid16)
+                    continue;
+
+                var payload = elementData.Slice(2);
+                if (payload.Length != 15)
+                    continue;
+
+                string payloadMac = FormatMacReversed(payload.Slice(0, 6));
+
+                // Optional consistency check:
+                // If report header MAC and payload MAC disagree, ignore packet.
+                if (!string.Equals(reportMac, payloadMac, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                short tempRaw = ReadInt16LE(payload, 6);
+                ushort humRaw = ReadUInt16LE(payload, 8);
+                ushort battMv = ReadUInt16LE(payload, 10);
+                byte battPct = payload[12];
+
+                double temperature = tempRaw / 100.0;
+                double humidity = humRaw / 100.0;
+
+                var sample = new Sample(
+                    Mac: payloadMac,
+                    Rssi: rssi,
+                    Temperature: temperature,
+                    Humidity: humidity,
+                    BattMv: battMv,
+                    BattPct: battPct);
+
+                return sample;
+            }
+
+            return null;
+        }
+
+        static ushort ReadUInt16LE(ReadOnlySpan<byte> s, int offset)
+            => (ushort)(s[offset] | (s[offset + 1] << 8));
+
+        static short ReadInt16LE(ReadOnlySpan<byte> s, int offset)
+            => unchecked((short)(s[offset] | (s[offset + 1] << 8)));
+
+        static string FormatMacReversed(ReadOnlySpan<byte> addrLe)
+        {
+            // HCI and payload nose MAC little-endian, user-friendly prikaz je obrnuto.
+            return string.Create(17, addrLe.ToArray(), static (chars, bytes) =>
+            {
+                int pos = 0;
+                for (int i = bytes.Length - 1; i >= 0; i--)
+                {
+                    byte b = bytes[i];
+                    chars[pos++] = GetHex((b >> 4) & 0xF);
+                    chars[pos++] = GetHex(b & 0xF);
+                    if (i != 0)
+                        chars[pos++] = ':';
+                }
+
+                static char GetHex(int value)
+                    => (char)(value < 10 ? '0' + value : 'A' + (value - 10));
+            });
+        }
     }
 
     #region P/Invoke
