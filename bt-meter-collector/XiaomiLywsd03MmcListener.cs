@@ -87,7 +87,7 @@ internal sealed class XiaomiLywsd03MmcRawListener
         if (packet.Length < 15 || 
             packet.Span[0] != 0x04 || 
             packet.Span[1] != 0x3E || 
-            packet.Span[3] != 0x02) return;
+            packet.Span[4] != 0x02) return;
         
         string hex = string.Join(" ", packet.ToArray().Select(b => $"0x{b:X2}"));
         Console.WriteLine($"Received bytes: {hex}");
