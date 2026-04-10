@@ -102,7 +102,7 @@ internal sealed class XiaomiLywsd03MmcRawListener
 
         if (subEvent == EvtLeAdvertisingReport)
         {
-            await ParseLegacyAdvertisingReports(span);
+            //await ParseLegacyAdvertisingReports(span);
             return;
         }
 
