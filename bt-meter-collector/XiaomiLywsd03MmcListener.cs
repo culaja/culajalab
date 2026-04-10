@@ -88,7 +88,6 @@ internal sealed class XiaomiLywsd03MmcRawListener
 
         const byte HciEventPkt = 0x04;
         const byte EvtLeMetaEvent = 0x3E;
-        const byte EvtLeAdvertisingReport = 0x02;
         const byte EvtLeExtendedAdvertisingReport = 0x0D;
         const ushort EnvironmentalSensingUuid16 = 0x181A;
 
@@ -100,60 +99,12 @@ internal sealed class XiaomiLywsd03MmcRawListener
 
         byte subEvent = span[3];
 
-        if (subEvent == EvtLeAdvertisingReport)
-        {
-            //await ParseLegacyAdvertisingReports(span);
-            return;
-        }
-
         if (subEvent == EvtLeExtendedAdvertisingReport)
         {
             await ParseExtendedAdvertisingReports(span);
         }
 
         return;
-
-        Task ParseLegacyAdvertisingReports(ReadOnlySpan<byte> s)
-        {
-            // Format:
-            // [0]=0x04 [1]=0x3E [2]=paramLen [3]=0x02 [4]=numReports ...
-            if (s.Length < 5)
-                return Task.CompletedTask;
-
-            int offset = 4;
-            int numReports = s[offset++];
-            for (int i = 0; i < numReports; i++)
-            {
-                // Legacy LE Advertising Report layout:
-                // evt_type(1), addr_type(1), addr(6), data_len(1), data(N), rssi(1)
-                if (offset + 10 > s.Length)
-                    return Task.CompletedTask;
-
-                byte evtType = s[offset++];
-                byte addrType = s[offset++];
-                _ = evtType;
-                _ = addrType;
-
-                string reportMac = FormatMacReversed(s.Slice(offset, 6));
-                offset += 6;
-
-                int dataLen = s[offset++];
-                if (offset + dataLen + 1 > s.Length)
-                    return Task.CompletedTask;
-
-                var adData = s.Slice(offset, dataLen);
-                offset += dataLen;
-
-                short rssi = unchecked((sbyte)s[offset++]);
-
-                if (TryParseMeasurement(adData, reportMac, rssi) is {} sample)
-                {
-                    return _sampleArrived(sample, ct);
-                }
-            }
-            
-            return Task.CompletedTask;
-        }
 
         Task ParseExtendedAdvertisingReports(ReadOnlySpan<byte> s)
         {
