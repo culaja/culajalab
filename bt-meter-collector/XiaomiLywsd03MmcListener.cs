@@ -71,7 +71,8 @@ internal sealed class XiaomiLywsd03MmcRawListener
                 int bytesRead = read(fd, buffer, buffer.Length);
                 if (bytesRead > 0)
                 {
-                    Console.WriteLine($"Received {bytesRead} bytes.");
+                    string hex = string.Join(" ", buffer.Take(bytesRead).Select(b => $"0x{b:X2}"));
+                    Console.WriteLine($"Received {bytesRead} bytes: {hex}");
                     await ProcessRawHciPacket(buffer.AsMemory(0, bytesRead), ct);
                 }
             }
