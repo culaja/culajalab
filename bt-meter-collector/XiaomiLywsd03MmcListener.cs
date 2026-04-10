@@ -1,145 +1,125 @@
 using System.Collections.Concurrent;
-using Tmds.DBus;
-
-// --- D-Bus Interfaces ---
-
-[DBusInterface("org.bluez.Adapter1")]
-public interface IAdapter1 : IDBusObject
-{
-    Task StartDiscoveryAsync();
-    Task SetDiscoveryFilterAsync(IDictionary<string, object> filter);
-}
-
-[DBusInterface("org.freedesktop.DBus.ObjectManager")]
-public interface IObjectManager : IDBusObject
-{
-    Task<IDictionary<ObjectPath, IDictionary<string, IDictionary<string, object>>>> GetManagedObjectsAsync();
-    Task<IDisposable> WatchInterfacesAddedAsync(Action<(ObjectPath path, IDictionary<string, IDictionary<string, object>> interfaces)> handler);
-    Task<IDisposable> WatchInterfacesRemovedAsync(Action<(ObjectPath path, string[] interfaces)> handler);
-}
-
-[DBusInterface("org.freedesktop.DBus.Properties")]
-public interface IProperties : IDBusObject
-{
-    Task<IDisposable> WatchPropertiesChangedAsync(Action<(string iface, IDictionary<string, object> changed, string[] invalidated)> handler);
-}
-
-// --- Main Listener Logic ---
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 public sealed record Sample(string Mac, short Rssi, double Temperature, double Humidity, ushort BattMv, byte BattPct);
 
-internal sealed class XiaomiLywsd03MmcListener
+internal sealed class XiaomiLywsd03MmcRawListener
 {
     private readonly Func<string, CancellationToken, Task> _deviceAppeared;
     private readonly Func<Sample, CancellationToken, Task> _sampleArrived;
-    
-    // Tracks active property subscriptions per device path
-    private readonly ConcurrentDictionary<ObjectPath, IDisposable> _deviceSubs = new();
-    private readonly ConcurrentDictionary<ObjectPath, short> _lastRssiByPath = new();
     private readonly ConcurrentDictionary<string, bool> _registeredMacs = new();
 
-    public XiaomiLywsd03MmcListener(Func<string, CancellationToken, Task> deviceAppeared, Func<Sample, CancellationToken, Task> sampleArrived)
+    // Native constants for Linux HCI sockets
+    private const int AF_BLUETOOTH = 31;
+    private const int SOCK_RAW = 3;
+    private const int BTPROTO_HCI = 1;
+    private const int HCI_CHANNEL_RAW = 0;
+
+    public XiaomiLywsd03MmcRawListener(Func<string, CancellationToken, Task> deviceAppeared, Func<Sample, CancellationToken, Task> sampleArrived)
     {
         _deviceAppeared = deviceAppeared;
         _sampleArrived = sampleArrived;
     }
 
-    public async Task StartListeningAsync(CancellationToken ct)
+    public void StartListening(CancellationToken ct)
     {
-        var bus = Connection.System;
-        var manager = bus.CreateProxy<IObjectManager>("org.bluez", "/");
-        var adapter = bus.CreateProxy<IAdapter1>("org.bluez", "/org/bluez/hci0");
-
-        // 1. Setup Filters: DuplicateData is key for receiving continuous adverts
-        await adapter.SetDiscoveryFilterAsync(new Dictionary<string, object> {
-            { "Transport", "le" },
-            { "DuplicateData", true } 
-        });
-
-        // 2. Watch for interface removal: If BlueZ clears its cache, we must be ready to re-attach
-        await manager.WatchInterfacesRemovedAsync(sig => {
-            if (sig.interfaces.Contains("org.bluez.Device1"))
-            {
-                if (_deviceSubs.TryRemove(sig.path, out var sub)) {
-                    sub.Dispose();
-                    _lastRssiByPath.TryRemove(sig.path, out _);
-                }
-            }
-        });
-
-        // 3. Watch for new devices
-        await manager.WatchInterfacesAddedAsync(sig => {
-            if (sig.interfaces.ContainsKey("org.bluez.Device1"))
-                _ = AttachDeviceAsync(bus, sig.path, ct);
-        });
-
-        // 4. Attach existing devices found in BlueZ cache
-        var objs = await manager.GetManagedObjectsAsync();
-        foreach (var (path, ifaces) in objs)
-            if (ifaces.ContainsKey("org.bluez.Device1"))
-                await AttachDeviceAsync(bus, path, ct);
-
-        // 5. Start Discovery and run a watchdog to keep it active
-        await adapter.StartDiscoveryAsync();
-        _ = RunDiscoveryWatchdog(adapter, ct);
+        Task.Run(() => RunSocketLoop(ct), ct);
     }
 
-    private async Task RunDiscoveryWatchdog(IAdapter1 adapter, CancellationToken ct)
+    private async Task RunSocketLoop(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2));
-        while (!ct.IsCancellationRequested && await timer.WaitForNextTickAsync(ct))
-        {
-            try { await adapter.StartDiscoveryAsync(); } 
-            catch { /* Ignore 'Operation already in progress' */ }
-        }
-    }
-    
-    private async Task AttachDeviceAsync(Connection bus, ObjectPath path, CancellationToken ct)
-    {
-        // Don't subscribe twice to the same path
-        if (_deviceSubs.ContainsKey(path)) return;
+        int fd = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
+        if (fd < 0) throw new Exception("Could not open raw Bluetooth socket. Ensure you have root/CAP_NET_RAW.");
 
-        var props = bus.CreateProxy<IProperties>("org.bluez", path);
-        const string PvvxUuid = "0000181a-0000-1000-8000-00805f9b34fb";
-
-        var sub = await props.WatchPropertiesChangedAsync(async change =>
+        try
         {
-            if (change.iface != "org.bluez.Device1") return;
-            
-            if (change.changed.TryGetValue("RSSI", out var rssiObj))
-                _lastRssiByPath[path] = (short)rssiObj;
-            
-            if (change.changed.TryGetValue("ServiceData", out var value))
+            var addr = new SockAddrHci { family = AF_BLUETOOTH, device = 0, channel = HCI_CHANNEL_RAW }; // hci0
+            if (bind(fd, ref addr, Marshal.SizeOf(addr)) < 0) throw new Exception("Failed to bind to hci0.");
+
+            // Basic BLE Scan Enable Command (Equivalent to 'hcitool lescan --duplicates')
+            EnableScanning(fd);
+
+            byte[] buffer = new byte[1024];
+            while (!ct.IsCancellationRequested)
             {
-                var sd = (IDictionary<string, object>)value;
-                foreach (var kv in sd)
+                int bytesRead = read(fd, buffer, buffer.Length);
+                if (bytesRead > 0)
                 {
-                    if (kv.Key.ToLowerInvariant() == PvvxUuid && kv.Value is byte[] bytes && bytes.Length == 15)
-                        await ParsePvvx(path, bytes, ct);
+                    await ProcessRawHciPacket(buffer.AsMemory(0, bytesRead), ct);
                 }
             }
-        });
-
-        if (!_deviceSubs.TryAdd(path, sub)) sub.Dispose();
-    }
-    
-    private async Task ParsePvvx(ObjectPath path, byte[] d, CancellationToken ct)
-    {
-        var mac = string.Join(":", d.Take(6).Reverse().Select(b => b.ToString("X2")));
-
-        if (_lastRssiByPath.TryGetValue(path, out var rssi))
+        }
+        finally
         {
-            if (_registeredMacs.TryAdd(mac, true))
-                await _deviceAppeared(mac, ct);
-            
-            var sample = new Sample(
-                mac, rssi, 
-                BitConverter.ToInt16(d, 6) / 100.0, 
-                BitConverter.ToUInt16(d, 8) / 100.0, 
-                BitConverter.ToUInt16(d, 10), 
-                d[12]);
-
-            await _sampleArrived(sample, ct);
+            close(fd);
         }
     }
+
+    private async Task ProcessRawHciPacket(ReadOnlyMemory<byte> packet, CancellationToken ct)
+    {
+        // 1. Check header without storing the span as a long-lived local
+        if (packet.Length < 15 || 
+            packet.Span[0] != 0x04 || 
+            packet.Span[1] != 0x3E || 
+            packet.Span[3] != 0x02) return;
+
+        // 2. Extract MAC and RSSI (use packet.Span just for the extraction)
+        string mac;
+        short rssi;
+        {
+            var span = packet.Span;
+            mac = string.Join(":", span.Slice(7, 6).ToArray().Reverse().Select(b => b.ToString("X2")));
+            rssi = (short)span[span.Length - 1];
+        }
+
+        // 3. Use packet (ReadOnlyMemory) for the loop to allow 'await' inside
+        int offset = 14; 
+        while (offset + 1 < packet.Length - 1)
+        {
+            byte len = packet.Span[offset]; // Access span briefly per iteration
+            if (len == 0 || offset + len >= packet.Length) break;
+
+            byte type = packet.Span[offset + 1];
+            if (type == 0x16 && packet.Span[offset + 2] == 0x1A && packet.Span[offset + 3] == 0x18)
+            {
+                var payload = packet.Slice(offset + 4, len - 3).ToArray();
+                await ParseAndEmit(mac, rssi, payload, ct); // Now this works!
+            }
+            offset += len + 1;
+        }
+    }
+
+
+    private async Task ParseAndEmit(string mac, short rssi, byte[] d, CancellationToken ct)
+    {
+        if (_registeredMacs.TryAdd(mac, true))
+            await _deviceAppeared(mac, ct);
+
+        var sample = new Sample(
+            mac, rssi,
+            BitConverter.ToInt16(d, 6) / 100.0,
+            BitConverter.ToUInt16(d, 8) / 100.0,
+            BitConverter.ToUInt16(d, 10),
+            d[12]
+        );
+
+        await _sampleArrived(sample, ct);
+    }
+
+    private void EnableScanning(int fd)
+    {
+        // For production, you'd send HCI commands to hci0 to ensure it's in scanning mode.
+        // Simplest way is to ensure 'sudo hcitool lescan --duplicates' is running or use 'hciconfig'
+    }
+
+    #region P/Invoke
+    [StructLayout(LayoutKind.Sequential)]
+    struct SockAddrHci { public ushort family; public ushort device; public ushort channel; }
+
+    [DllImport("libc", SetLastError = true)] static extern int socket(int domain, int type, int protocol);
+    [DllImport("libc", SetLastError = true)] static extern int bind(int sockfd, ref SockAddrHci addr, int addrlen);
+    [DllImport("libc", SetLastError = true)] static extern int read(int fd, byte[] buf, int count);
+    [DllImport("libc", SetLastError = true)] static extern int close(int fd);
+    #endregion
 }
