@@ -10,7 +10,7 @@ internal sealed class HomeAssistantSensorMqttPublisher
     private readonly MqttClientOptions _options;
     private IMqttClient? _client;
     
-    private readonly ConcurrentDictionary<string, DateTime> _lastPublishedAt = new();
+    private readonly ConcurrentDictionary<string, DateTime?> _lastPublishedAt = new();
 
     public HomeAssistantSensorMqttPublisher(
         ILogger logger,
@@ -22,7 +22,46 @@ internal sealed class HomeAssistantSensorMqttPublisher
             .Build();
     }
     
-    public async Task RegisterSensorAsync(string mac, CancellationToken cancellationToken)
+    
+
+    public async Task PublishSampleAsync(Sample sample, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+
+        if (_lastPublishedAt.TryGetValue(sample.Mac, out var lastPublishedAt) &&
+            now - lastPublishedAt!.Value < TimeSpan.FromMinutes(1))
+        {
+            _logger.LogDebug("[PublishSample] Skipped, published less than 1 minute ago for {Mac}", sample.Mac);
+            return;
+        }
+
+        if (lastPublishedAt is null)
+        {
+            await RegisterSensorAsync(sample.Mac, cancellationToken);
+        }
+        
+        var client = await GrabConnectedClientAsync(cancellationToken);
+        var filteredMac = sample.Mac.Replace(":", string.Empty);
+        
+        await client.PublishAsync(
+            new MqttApplicationMessageBuilder()
+                .WithTopic($"rumenka/sensor/{filteredMac}/state")
+                .WithPayload(JsonSerializer.Serialize(new
+                {
+                    rssi = sample.Rssi,
+                    temperature = sample.Temperature,
+                    humidity = sample.Humidity,
+                    battery = sample.BattPct
+                }))
+                .Build(),
+            cancellationToken);
+        
+        _lastPublishedAt[sample.Mac] = now;
+        
+        _logger.LogInformation("[PublishSample] Mqtt message sent: {@Message}", sample);
+    }
+    
+    private async Task RegisterSensorAsync(string mac, CancellationToken cancellationToken)
     {
         var client = await GrabConnectedClientAsync(cancellationToken);
         
@@ -135,38 +174,6 @@ internal sealed class HomeAssistantSensorMqttPublisher
             cancellationToken);
         
         _logger.LogInformation("[RegisterSensor] Mqtt message sent: {@Message}", batteryConfigMessage);
-    }
-
-    public async Task PublishSampleAsync(Sample sample, CancellationToken cancellationToken)
-    {
-        var now = DateTime.UtcNow;
-
-        if (_lastPublishedAt.TryGetValue(sample.Mac, out var lastPublishedAt) &&
-            now - lastPublishedAt < TimeSpan.FromMinutes(1))
-        {
-            _logger.LogDebug("[PublishSample] Skipped, published less than 1 minute ago for {Mac}", sample.Mac);
-            return;
-        }
-        
-        var client = await GrabConnectedClientAsync(cancellationToken);
-        var filteredMac = sample.Mac.Replace(":", string.Empty);
-        
-        await client.PublishAsync(
-            new MqttApplicationMessageBuilder()
-                .WithTopic($"rumenka/sensor/{filteredMac}/state")
-                .WithPayload(JsonSerializer.Serialize(new
-                {
-                    rssi = sample.Rssi,
-                    temperature = sample.Temperature,
-                    humidity = sample.Humidity,
-                    battery = sample.BattPct
-                }))
-                .Build(),
-            cancellationToken);
-        
-        _lastPublishedAt[sample.Mac] = now;
-        
-        _logger.LogInformation("[PublishSample] Mqtt message sent: {@Message}", sample);
     }
 
     private async Task<IMqttClient> GrabConnectedClientAsync(CancellationToken cancellationToken)

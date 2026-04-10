@@ -9,14 +9,8 @@ internal sealed class Worker : BackgroundService
     public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration)
     {
         _logger = logger;
-        _listener = new XiaomiLywsd03MmcRawListener(DeviceAppeared, SampleReceived);
+        _listener = new XiaomiLywsd03MmcRawListener(SampleReceived);
         _mqttPublisher = new HomeAssistantSensorMqttPublisher(logger, mqttConfiguration);
-    }
-
-    private Task DeviceAppeared(string mac, CancellationToken cancellationToken)
-    {
-        _logger.LogInformation($"Device appeared: {mac}");
-        return _mqttPublisher.RegisterSensorAsync(mac, cancellationToken);
     }
 
     private Task SampleReceived(Sample sample, CancellationToken cancellationToken)
