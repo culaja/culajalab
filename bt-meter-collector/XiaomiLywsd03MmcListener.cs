@@ -1,26 +1,30 @@
 using System.Collections.Concurrent;
 using Tmds.DBus;
 
+// --- D-Bus Interfaces ---
+
 [DBusInterface("org.bluez.Adapter1")]
 public interface IAdapter1 : IDBusObject
 {
     Task StartDiscoveryAsync();
+    Task SetDiscoveryFilterAsync(IDictionary<string, object> filter);
 }
 
 [DBusInterface("org.freedesktop.DBus.ObjectManager")]
 public interface IObjectManager : IDBusObject
 {
     Task<IDictionary<ObjectPath, IDictionary<string, IDictionary<string, object>>>> GetManagedObjectsAsync();
-    Task<IDisposable> WatchInterfacesAddedAsync(
-        Action<(ObjectPath path, IDictionary<string, IDictionary<string, object>> interfaces)> handler);
+    Task<IDisposable> WatchInterfacesAddedAsync(Action<(ObjectPath path, IDictionary<string, IDictionary<string, object>> interfaces)> handler);
+    Task<IDisposable> WatchInterfacesRemovedAsync(Action<(ObjectPath path, string[] interfaces)> handler);
 }
 
 [DBusInterface("org.freedesktop.DBus.Properties")]
 public interface IProperties : IDBusObject
 {
-    Task<IDisposable> WatchPropertiesChangedAsync(
-        Action<(string iface, IDictionary<string, object> changed, string[] invalidated)> handler);
+    Task<IDisposable> WatchPropertiesChangedAsync(Action<(string iface, IDictionary<string, object> changed, string[] invalidated)> handler);
 }
+
+// --- Main Listener Logic ---
 
 public sealed record Sample(string Mac, short Rssi, double Temperature, double Humidity, ushort BattMv, byte BattPct);
 
@@ -28,6 +32,8 @@ internal sealed class XiaomiLywsd03MmcListener
 {
     private readonly Func<string, CancellationToken, Task> _deviceAppeared;
     private readonly Func<Sample, CancellationToken, Task> _sampleArrived;
+    
+    // Tracks active property subscriptions per device path
     private readonly ConcurrentDictionary<ObjectPath, IDisposable> _deviceSubs = new();
     private readonly ConcurrentDictionary<ObjectPath, short> _lastRssiByPath = new();
     private readonly ConcurrentDictionary<string, bool> _registeredMacs = new();
@@ -38,93 +44,102 @@ internal sealed class XiaomiLywsd03MmcListener
         _sampleArrived = sampleArrived;
     }
 
-    public void StartListening(CancellationToken cancellationToken)
+    public async Task StartListeningAsync(CancellationToken ct)
     {
         var bus = Connection.System;
         var manager = bus.CreateProxy<IObjectManager>("org.bluez", "/");
         var adapter = bus.CreateProxy<IAdapter1>("org.bluez", "/org/bluez/hci0");
-        
-        var objs = manager.GetManagedObjectsAsync().Result;
+
+        // 1. Setup Filters: DuplicateData is key for receiving continuous adverts
+        await adapter.SetDiscoveryFilterAsync(new Dictionary<string, object> {
+            { "Transport", "le" },
+            { "DuplicateData", true } 
+        });
+
+        // 2. Watch for interface removal: If BlueZ clears its cache, we must be ready to re-attach
+        await manager.WatchInterfacesRemovedAsync(sig => {
+            if (sig.interfaces.Contains("org.bluez.Device1"))
+            {
+                if (_deviceSubs.TryRemove(sig.path, out var sub)) {
+                    sub.Dispose();
+                    _lastRssiByPath.TryRemove(sig.path, out _);
+                }
+            }
+        });
+
+        // 3. Watch for new devices
+        await manager.WatchInterfacesAddedAsync(sig => {
+            if (sig.interfaces.ContainsKey("org.bluez.Device1"))
+                _ = AttachDeviceAsync(bus, sig.path, ct);
+        });
+
+        // 4. Attach existing devices found in BlueZ cache
+        var objs = await manager.GetManagedObjectsAsync();
         foreach (var (path, ifaces) in objs)
             if (ifaces.ContainsKey("org.bluez.Device1"))
-            {
-                AttachDeviceAsync(bus, path, cancellationToken).Wait(cancellationToken);
-            }
-        
-        manager.WatchInterfacesAddedAsync(sig =>
-        {
-            if (sig.interfaces.ContainsKey("org.bluez.Device1"))
-                _ = AttachDeviceAsync(bus, sig.path, cancellationToken);
-        }).Wait(cancellationToken);
+                await AttachDeviceAsync(bus, path, ct);
 
-        adapter.StartDiscoveryAsync().Wait(cancellationToken);
+        // 5. Start Discovery and run a watchdog to keep it active
+        await adapter.StartDiscoveryAsync();
+        _ = RunDiscoveryWatchdog(adapter, ct);
+    }
+
+    private async Task RunDiscoveryWatchdog(IAdapter1 adapter, CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2));
+        while (!ct.IsCancellationRequested && await timer.WaitForNextTickAsync(ct))
+        {
+            try { await adapter.StartDiscoveryAsync(); } 
+            catch { /* Ignore 'Operation already in progress' */ }
+        }
     }
     
-    private async Task AttachDeviceAsync(Connection bus, ObjectPath path, CancellationToken cancellationToken)
+    private async Task AttachDeviceAsync(Connection bus, ObjectPath path, CancellationToken ct)
     {
+        // Don't subscribe twice to the same path
         if (_deviceSubs.ContainsKey(path)) return;
 
         var props = bus.CreateProxy<IProperties>("org.bluez", path);
-        
         const string PvvxUuid = "0000181a-0000-1000-8000-00805f9b34fb";
+
         var sub = await props.WatchPropertiesChangedAsync(async change =>
         {
             if (change.iface != "org.bluez.Device1") return;
             
             if (change.changed.TryGetValue("RSSI", out var rssiObj))
-            {
-                var rssi = (short)rssiObj;
-                _lastRssiByPath[path] = rssi;
-            }
+                _lastRssiByPath[path] = (short)rssiObj;
             
             if (change.changed.TryGetValue("ServiceData", out var value))
             {
                 var sd = (IDictionary<string, object>)value;
-
                 foreach (var kv in sd)
                 {
-                    var uuid = kv.Key.ToLowerInvariant();
-                    if (uuid != PvvxUuid)
-                        continue;
-
-                    var bytes = (byte[])kv.Value;
-                    if (bytes.Length != 15)
-                        continue;
-
-                    await ParsePvvx(path, bytes, cancellationToken);
+                    if (kv.Key.ToLowerInvariant() == PvvxUuid && kv.Value is byte[] bytes && bytes.Length == 15)
+                        await ParsePvvx(path, bytes, ct);
                 }
             }
         });
 
-        _deviceSubs[path] = sub;
+        if (!_deviceSubs.TryAdd(path, sub)) sub.Dispose();
     }
     
-    async Task ParsePvvx(ObjectPath path, byte[] d, CancellationToken cancellationToken)
+    private async Task ParsePvvx(ObjectPath path, byte[] d, CancellationToken ct)
     {
-        if (d.Length < 15) return;
-
-        var mac = string.Join(":",
-            new List<byte>{d[5], d[4], d[3], d[2], d[1], d[0]}
-                .Select(b => b.ToString("X2")));
-
-        short tempRaw = BitConverter.ToInt16(d, 6);
-        ushort humRaw = BitConverter.ToUInt16(d, 8);
-        ushort battMv = BitConverter.ToUInt16(d, 10);
-        byte battPct = d[12];
-
-        double temp = tempRaw / 100.0;
-        double hum = humRaw / 100.0;
+        var mac = string.Join(":", d.Take(6).Reverse().Select(b => b.ToString("X2")));
 
         if (_lastRssiByPath.TryGetValue(path, out var rssi))
         {
-            if (!_registeredMacs.ContainsKey(mac))
-            {
-                await _deviceAppeared(mac, cancellationToken);
-                _registeredMacs[mac] = true;
-            }
+            if (_registeredMacs.TryAdd(mac, true))
+                await _deviceAppeared(mac, ct);
             
-            var sample = new Sample(mac, rssi, temp, hum, battMv, battPct);
-            await _sampleArrived(sample, cancellationToken);
+            var sample = new Sample(
+                mac, rssi, 
+                BitConverter.ToInt16(d, 6) / 100.0, 
+                BitConverter.ToUInt16(d, 8) / 100.0, 
+                BitConverter.ToUInt16(d, 10), 
+                d[12]);
+
+            await _sampleArrived(sample, ct);
         }
     }
 }
