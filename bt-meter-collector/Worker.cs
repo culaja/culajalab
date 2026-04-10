@@ -27,7 +27,7 @@ internal sealed class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _listener.StartListeningAsync(stoppingToken);
+        _listener.StartListening(stoppingToken);
 
         try
         {
