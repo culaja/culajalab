@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using MQTTnet;
 
@@ -8,6 +9,8 @@ internal sealed class HomeAssistantSensorMqttPublisher
     private readonly ILogger _logger;
     private readonly MqttClientOptions _options;
     private IMqttClient? _client;
+    
+    private readonly ConcurrentDictionary<string, DateTime> _lastPublishedAt = new();
 
     public HomeAssistantSensorMqttPublisher(
         ILogger logger,
@@ -136,6 +139,15 @@ internal sealed class HomeAssistantSensorMqttPublisher
 
     public async Task PublishSampleAsync(Sample sample, CancellationToken cancellationToken)
     {
+        var now = DateTime.UtcNow;
+
+        if (_lastPublishedAt.TryGetValue(sample.Mac, out var lastPublishedAt) &&
+            now - lastPublishedAt < TimeSpan.FromMinutes(1))
+        {
+            _logger.LogDebug("[PublishSample] Skipped, published less than 1 minute ago for {Mac}", sample.Mac);
+            return;
+        }
+        
         var client = await GrabConnectedClientAsync(cancellationToken);
         var filteredMac = sample.Mac.Replace(":", string.Empty);
         
@@ -151,6 +163,8 @@ internal sealed class HomeAssistantSensorMqttPublisher
                 }))
                 .Build(),
             cancellationToken);
+        
+        _lastPublishedAt[sample.Mac] = now;
         
         _logger.LogInformation("[PublishSample] Mqtt message sent: {@Message}", sample);
     }
