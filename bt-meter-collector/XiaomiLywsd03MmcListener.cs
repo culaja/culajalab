@@ -15,6 +15,20 @@ internal sealed class XiaomiLywsd03MmcRawListener
     private const int SOCK_RAW = 3;
     private const int BTPROTO_HCI = 1;
     private const int HCI_CHANNEL_RAW = 0;
+    
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HciFilter
+    {
+        public uint TypeMask;
+        public uint EventMaskL;
+        public uint EventMaskH;
+        public ushort Opcode;
+    }
+
+    const int SOL_HCI = 0;
+    const int HCI_FILTER = 2;
+    const int HCI_EVENT_PKT = 0x04;
+    const int EVT_LE_META_EVENT = 0x3e;
 
     public XiaomiLywsd03MmcRawListener(Func<string, CancellationToken, Task> deviceAppeared, Func<Sample, CancellationToken, Task> sampleArrived)
     {
@@ -36,6 +50,17 @@ internal sealed class XiaomiLywsd03MmcRawListener
         {
             var addr = new SockAddrHci { family = AF_BLUETOOTH, device = 0, channel = HCI_CHANNEL_RAW }; // hci0
             if (bind(fd, ref addr, Marshal.SizeOf(addr)) < 0) throw new Exception("Failed to bind to hci0.");
+            
+            var filter = new HciFilter();
+            // Set bit for HCI_EVENT_PKT in TypeMask
+                        filter.TypeMask = (1U << HCI_EVENT_PKT);
+            // Set all bits in EventMask to receive all events, 
+            // or specifically set the bit for EVT_LE_META_EVENT.
+                        filter.EventMaskL = 0xFFFFFFFF;
+                        filter.EventMaskH = 0xFFFFFFFF;
+
+            if (setsockopt(fd, SOL_HCI, HCI_FILTER, ref filter, Marshal.SizeOf(filter)) < 0)
+                throw new Exception("Failed to set HCI filter.");
 
             // Basic BLE Scan Enable Command (Equivalent to 'hcitool lescan --duplicates')
             EnableScanning(fd);
@@ -121,5 +146,14 @@ internal sealed class XiaomiLywsd03MmcRawListener
     [DllImport("libc", SetLastError = true)] static extern int bind(int sockfd, ref SockAddrHci addr, int addrlen);
     [DllImport("libc", SetLastError = true)] static extern int read(int fd, byte[] buf, int count);
     [DllImport("libc", SetLastError = true)] static extern int close(int fd);
+    
+    [DllImport("libc", SetLastError = true)]
+    public static extern int setsockopt(
+        int sockfd, 
+        int level, 
+        int optname, 
+        ref HciFilter optval, 
+        int optlen
+    );
     #endregion
 }
