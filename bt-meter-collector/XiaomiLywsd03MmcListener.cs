@@ -1,14 +1,10 @@
-using System.Collections.Concurrent;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
 public sealed record Sample(string Mac, short Rssi, double Temperature, double Humidity, ushort BattMv, byte BattPct);
 
 internal sealed class XiaomiLywsd03MmcRawListener
 {
-    private readonly Func<string, CancellationToken, Task> _deviceAppeared;
     private readonly Func<Sample, CancellationToken, Task> _sampleArrived;
-    private readonly ConcurrentDictionary<string, bool> _registeredMacs = new();
 
     // Native constants for Linux HCI sockets
     private const int AF_BLUETOOTH = 31;
@@ -28,11 +24,9 @@ internal sealed class XiaomiLywsd03MmcRawListener
     const int SOL_HCI = 0;
     const int HCI_FILTER = 2;
     const int HCI_EVENT_PKT = 0x04;
-    const int EVT_LE_META_EVENT = 0x3e;
 
-    public XiaomiLywsd03MmcRawListener(Func<string, CancellationToken, Task> deviceAppeared, Func<Sample, CancellationToken, Task> sampleArrived)
+    public XiaomiLywsd03MmcRawListener(Func<Sample, CancellationToken, Task> sampleArrived)
     {
-        _deviceAppeared = deviceAppeared;
         _sampleArrived = sampleArrived;
     }
 
