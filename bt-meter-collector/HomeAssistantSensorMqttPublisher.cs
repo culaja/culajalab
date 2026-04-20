@@ -10,7 +10,7 @@ internal sealed class HomeAssistantSensorMqttPublisher
     private readonly MqttClientOptions _options;
     private IMqttClient? _client;
     
-    private readonly ConcurrentDictionary<string, DateTime?> _lastPublishedAt = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastPublishedAt = new();
 
     public HomeAssistantSensorMqttPublisher(
         ILogger logger,
@@ -29,13 +29,13 @@ internal sealed class HomeAssistantSensorMqttPublisher
         var now = DateTime.UtcNow;
 
         if (_lastPublishedAt.TryGetValue(sample.Mac, out var lastPublishedAt) &&
-            now - lastPublishedAt!.Value < TimeSpan.FromMinutes(1))
+            now - lastPublishedAt < TimeSpan.FromMinutes(1))
         {
             _logger.LogDebug("[PublishSample] Skipped, published less than 1 minute ago for {Mac}", sample.Mac);
             return;
         }
 
-        if (lastPublishedAt is null)
+        if (_lastPublishedAt.TryAdd(sample.Mac, DateTime.MinValue))
         {
             await RegisterSensorAsync(sample.Mac, cancellationToken);
         }

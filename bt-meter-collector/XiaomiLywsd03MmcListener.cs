@@ -59,6 +59,11 @@ internal sealed class XiaomiLywsd03MmcRawListener
             byte[] buffer = new byte[1024];
             while (!ct.IsCancellationRequested)
             {
+                var pollFd = new PollFd { fd = fd, events = POLLIN };
+                int ready = poll(ref pollFd, 1, 500);
+                if (ready <= 0)
+                    continue;
+
                 int bytesRead = read(fd, buffer, buffer.Length);
                 if (bytesRead > 0)
                 {
@@ -267,10 +272,16 @@ internal sealed class XiaomiLywsd03MmcRawListener
     [StructLayout(LayoutKind.Sequential)]
     struct SockAddrHci { public ushort family; public ushort device; public ushort channel; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    struct PollFd { public int fd; public short events; public short revents; }
+
+    private const short POLLIN = 0x0001;
+
     [DllImport("libc", SetLastError = true)] static extern int socket(int domain, int type, int protocol);
     [DllImport("libc", SetLastError = true)] static extern int bind(int sockfd, ref SockAddrHci addr, int addrlen);
     [DllImport("libc", SetLastError = true)] static extern int read(int fd, byte[] buf, int count);
     [DllImport("libc", SetLastError = true)] static extern int close(int fd);
+    [DllImport("libc", SetLastError = true)] static extern int poll(ref PollFd fds, uint nfds, int timeout);
     
     [DllImport("libc", SetLastError = true)]
     public static extern int setsockopt(
