@@ -6,10 +6,10 @@ internal sealed class Worker : BackgroundService
     private readonly XiaomiLywsd03MmcRawListener _listener;
     private readonly MqttPublisher _mqttPublisher;
 
-    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration)
+    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration, BluetoothConfiguration bluetoothConfiguration)
     {
         _logger = logger;
-        _listener = new XiaomiLywsd03MmcRawListener(SampleReceived);
+        _listener = new XiaomiLywsd03MmcRawListener(SampleReceived, bluetoothConfiguration.HciDevice);
         _mqttPublisher = new MqttPublisher(logger, mqttConfiguration);
     }
 

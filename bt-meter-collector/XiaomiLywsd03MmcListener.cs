@@ -25,9 +25,12 @@ internal sealed class XiaomiLywsd03MmcRawListener
     const int HCI_FILTER = 2;
     const int HCI_EVENT_PKT = 0x04;
 
-    public XiaomiLywsd03MmcRawListener(Func<Sample, CancellationToken, Task> sampleArrived)
+    private readonly ushort _hciDevice;
+
+    public XiaomiLywsd03MmcRawListener(Func<Sample, CancellationToken, Task> sampleArrived, ushort hciDevice = 0)
     {
         _sampleArrived = sampleArrived;
+        _hciDevice = hciDevice;
     }
 
     public void StartListening(CancellationToken ct)
@@ -42,7 +45,7 @@ internal sealed class XiaomiLywsd03MmcRawListener
 
         try
         {
-            var addr = new SockAddrHci { family = AF_BLUETOOTH, device = 0, channel = HCI_CHANNEL_RAW }; // hci0
+            var addr = new SockAddrHci { family = AF_BLUETOOTH, device = _hciDevice, channel = HCI_CHANNEL_RAW };
             if (bind(fd, ref addr, Marshal.SizeOf(addr)) < 0) throw new Exception("Failed to bind to hci0.");
             
             var filter = new HciFilter();
