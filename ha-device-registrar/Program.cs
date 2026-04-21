@@ -14,6 +14,9 @@ Host.CreateDefaultBuilder(args)
             throw new InvalidOperationException($"Device at index {devices.IndexOf(invalid[0])} has no MAC address configured in appsettings.json.");
         s.AddSingleton(devices);
 
+        var climates = c.Configuration.GetSection("Climates").Get<List<ClimateDeviceConfig>>() ?? [];
+        s.AddSingleton(climates);
+
         s.AddSingleton(new RegistrarConfiguration(
             SensorExpirySeconds: int.Parse(c.Configuration["Registrar:SensorExpirySeconds"] ?? "300")));
 

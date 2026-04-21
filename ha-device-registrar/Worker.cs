@@ -9,13 +9,15 @@ internal sealed class Worker : BackgroundService
     private readonly MqttConfiguration _mqttConfiguration;
     private readonly RegistrarConfiguration _registrarConfig;
     private readonly List<DeviceConfig> _devices;
+    private readonly List<ClimateDeviceConfig> _climates;
 
-    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration, RegistrarConfiguration registrarConfig, List<DeviceConfig> devices)
+    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration, RegistrarConfiguration registrarConfig, List<DeviceConfig> devices, List<ClimateDeviceConfig> climates)
     {
         _logger = logger;
         _mqttConfiguration = mqttConfiguration;
         _registrarConfig = registrarConfig;
         _devices = devices;
+        _climates = climates;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -42,9 +44,10 @@ internal sealed class Worker : BackgroundService
         _logger.LogInformation("Connected to MQTT broker at {Host}:{Port}", _mqttConfiguration.Host, _mqttConfiguration.Port);
 
         foreach (var device in _devices)
-        {
             await RegisterDeviceAsync(client, device, stoppingToken);
-        }
+
+        foreach (var climate in _climates)
+            await RegisterClimateAsync(client, climate, stoppingToken);
 
         _logger.LogInformation("All devices registered. Running indefinitely.");
 
@@ -90,5 +93,44 @@ internal sealed class Worker : BackgroundService
 
             _logger.LogInformation("Registered sensor {UniqueId}", uniqueId);
         }
+    }
+
+    private async Task RegisterClimateAsync(IMqttClient client, ClimateDeviceConfig climate, CancellationToken ct)
+    {
+        var config = new
+        {
+            name = climate.Name,
+            unique_id = climate.UniqueId,
+            current_temperature_topic = climate.CurrentTemperatureTopic,
+            current_temperature_template = climate.CurrentTemperatureTemplate,
+            temperature_command_topic = climate.TemperatureCommandTopic,
+            temperature_state_topic = climate.TemperatureStateTopic,
+            temperature_state_template = climate.TemperatureStateTemplate,
+            mode_command_topic = climate.ModeCommandTopic,
+            mode_command_template = climate.ModeCommandTemplate,
+            mode_state_topic = climate.ModeStateTopic,
+            mode_state_template = climate.ModeStateTemplate,
+            modes = climate.Modes,
+            min_temp = climate.MinTemp,
+            max_temp = climate.MaxTemp,
+            temp_step = climate.TempStep,
+            device = new
+            {
+                identifiers = new[] { climate.UniqueId },
+                name = climate.Name,
+                manufacturer = climate.Manufacturer,
+                model = climate.Model
+            }
+        };
+
+        await client.PublishAsync(
+            new MqttApplicationMessageBuilder()
+                .WithTopic($"homeassistant/climate/{climate.UniqueId}/config")
+                .WithPayload(JsonSerializer.Serialize(config))
+                .WithRetainFlag()
+                .Build(),
+            ct);
+
+        _logger.LogInformation("Registered climate {UniqueId}", climate.UniqueId);
     }
 }
