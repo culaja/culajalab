@@ -3,8 +3,9 @@ using bt_meter_collector;
 Host.CreateDefaultBuilder(args)
     .ConfigureServices((c, s) =>
     {
+        var mqttHost = c.Configuration["Mqtt:Host"] ?? throw new InvalidOperationException("Mqtt:Host is not configured in appsettings.json.");
         s.AddSingleton(new MqttConfiguration(
-            Host: c.Configuration["Mqtt:Host"]!,
+            Host: mqttHost,
             Port: ushort.Parse(c.Configuration["Mqtt:Port"]!)));
         s.AddHostedService<Worker>();
     })
