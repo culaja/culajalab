@@ -106,8 +106,6 @@ internal sealed class Worker : BackgroundService
             temperature_command_topic = climate.TemperatureCommandTopic,
             temperature_state_topic = climate.TemperatureStateTopic,
             temperature_state_template = climate.TemperatureStateTemplate,
-            mode_command_topic = climate.ModeCommandTopic,
-            mode_command_template = climate.ModeCommandTemplate,
             mode_state_topic = climate.ModeStateTopic,
             mode_state_template = climate.ModeStateTemplate,
             modes = climate.Modes,

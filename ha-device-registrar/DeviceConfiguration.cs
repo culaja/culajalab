@@ -32,8 +32,6 @@ public sealed record ClimateDeviceConfig
     public string TemperatureCommandTopic { get; init; } = "";
     public string TemperatureStateTopic { get; init; } = "";
     public string TemperatureStateTemplate { get; init; } = "";
-    public string ModeCommandTopic { get; init; } = "";
-    public string ModeCommandTemplate { get; init; } = "";
     public string ModeStateTopic { get; init; } = "";
     public string ModeStateTemplate { get; init; } = "";
     public List<string> Modes { get; init; } = [];
