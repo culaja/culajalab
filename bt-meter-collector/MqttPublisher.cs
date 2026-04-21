@@ -4,7 +4,7 @@ using MQTTnet;
 
 namespace bt_meter_collector;
 
-internal sealed class HomeAssistantSensorMqttPublisher
+internal sealed class MqttPublisher
 {
     private readonly ILogger _logger;
     private readonly MqttClientOptions _options;
@@ -12,7 +12,7 @@ internal sealed class HomeAssistantSensorMqttPublisher
 
     private readonly ConcurrentDictionary<string, DateTime> _lastPublishedAt = new();
 
-    public HomeAssistantSensorMqttPublisher(
+    public MqttPublisher(
         ILogger logger,
         MqttConfiguration mqttConfiguration)
     {

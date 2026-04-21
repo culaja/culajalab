@@ -4,13 +4,13 @@ internal sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly XiaomiLywsd03MmcRawListener _listener;
-    private readonly HomeAssistantSensorMqttPublisher _mqttPublisher;
+    private readonly MqttPublisher _mqttPublisher;
 
     public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration)
     {
         _logger = logger;
         _listener = new XiaomiLywsd03MmcRawListener(SampleReceived);
-        _mqttPublisher = new HomeAssistantSensorMqttPublisher(logger, mqttConfiguration);
+        _mqttPublisher = new MqttPublisher(logger, mqttConfiguration);
     }
 
     private Task SampleReceived(Sample sample, CancellationToken cancellationToken)
