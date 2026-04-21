@@ -8,6 +8,9 @@ Host.CreateDefaultBuilder(args)
             Port: ushort.Parse(c.Configuration["Mqtt:Port"]!)));
 
         var devices = c.Configuration.GetSection("Devices").Get<List<DeviceConfig>>() ?? [];
+        var invalid = devices.Where(d => string.IsNullOrWhiteSpace(d.Mac)).ToList();
+        if (invalid.Count > 0)
+            throw new InvalidOperationException($"Device at index {devices.IndexOf(invalid[0])} has no MAC address configured in appsettings.json.");
         s.AddSingleton(devices);
 
         s.AddHostedService<Worker>();
