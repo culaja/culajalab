@@ -1,6 +1,7 @@
 namespace ha_device_registrar;
 
 public sealed record MqttConfiguration(string Host, ushort Port);
+public sealed record RegistrarConfiguration(int SensorExpirySeconds);
 
 public sealed record DeviceConfig
 {

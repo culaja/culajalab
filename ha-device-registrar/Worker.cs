@@ -7,12 +7,14 @@ internal sealed class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly MqttConfiguration _mqttConfiguration;
+    private readonly RegistrarConfiguration _registrarConfig;
     private readonly List<DeviceConfig> _devices;
 
-    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration, List<DeviceConfig> devices)
+    public Worker(ILogger<Worker> logger, MqttConfiguration mqttConfiguration, RegistrarConfiguration registrarConfig, List<DeviceConfig> devices)
     {
         _logger = logger;
         _mqttConfiguration = mqttConfiguration;
+        _registrarConfig = registrarConfig;
         _devices = devices;
     }
 
@@ -73,6 +75,7 @@ internal sealed class Worker : BackgroundService
                 device_class = sensor.DeviceClass,
                 value_template = sensor.ValueTemplate,
                 state_class = sensor.StateClass,
+                expire_after = _registrarConfig.SensorExpirySeconds,
                 unique_id = uniqueId,
                 device = deviceIdentifier
             };

@@ -14,6 +14,9 @@ Host.CreateDefaultBuilder(args)
             throw new InvalidOperationException($"Device at index {devices.IndexOf(invalid[0])} has no MAC address configured in appsettings.json.");
         s.AddSingleton(devices);
 
+        s.AddSingleton(new RegistrarConfiguration(
+            SensorExpirySeconds: int.Parse(c.Configuration["Registrar:SensorExpirySeconds"] ?? "300")));
+
         s.AddHostedService<Worker>();
     })
     .Build()
