@@ -21,6 +21,8 @@ jobs:
             context: ./bt-meter-collector
           - image: ha-device-registrar
             context: ./ha-device-registrar
+          - image: hitachi-yutaki-2016-mqtt-gateway
+            context: ./hitachi-yutaki-2016-mqtt-gateway
 
     steps:
       - name: Checkout
