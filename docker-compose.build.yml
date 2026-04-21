@@ -1,0 +1,10 @@
+services:
+  bt-meter-collector:
+    build:
+      context: ./bt-meter-collector
+    image: ghcr.io/culaja/bt-meter-collector:latest
+
+  ha-device-registrar:
+    build:
+      context: ./ha-device-registrar
+    image: ghcr.io/culaja/ha-device-registrar:latest
