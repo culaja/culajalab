@@ -238,25 +238,36 @@ internal sealed class Worker : BackgroundService
 
     private static bool TryParseWriteValue(RegisterDefinition reg, string payload, out short rawValue)
     {
-        if (reg.Kind == RegisterKind.Analog &&
-            double.TryParse(payload, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var engValue))
+        switch (reg.Kind)
         {
-            rawValue = (short)Math.Round(engValue / reg.Scale);
-            return true;
-        }
+            case RegisterKind.Analog:
+                if (double.TryParse(payload, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var engValue))
+                {
+                    rawValue = (short)Math.Round(engValue / reg.Scale);
+                    return true;
+                }
+                break;
 
-        if (short.TryParse(payload, out rawValue))
-            return true;
+            case RegisterKind.Enum:
+                if (reg.EnumValues is not null)
+                {
+                    var match = reg.EnumValues.FirstOrDefault(kvp =>
+                        string.Equals(kvp.Value, payload, StringComparison.OrdinalIgnoreCase));
+                    if (match.Value is not null)
+                    {
+                        rawValue = (short)match.Key;
+                        return true;
+                    }
+                }
+                if (short.TryParse(payload, out rawValue))
+                    return true;
+                break;
 
-        if (reg.Kind == RegisterKind.Enum && reg.EnumValues is not null)
-        {
-            var match = reg.EnumValues.FirstOrDefault(kvp =>
-                string.Equals(kvp.Value, payload, StringComparison.OrdinalIgnoreCase));
-            if (match.Value is not null)
-            {
-                rawValue = (short)match.Key;
-                return true;
-            }
+            case RegisterKind.Raw:
+            case RegisterKind.Bitmask:
+                if (short.TryParse(payload, out rawValue))
+                    return true;
+                break;
         }
 
         rawValue = 0;
