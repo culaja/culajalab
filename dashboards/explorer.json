@@ -1,0 +1,102 @@
+{
+  "title": "Explorer",
+  "uid": "explorer",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "tags": ["explorer"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Data Source",
+        "query": "postgres",
+        "refresh": 1,
+        "hide": 2,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "device_id",
+        "type": "query",
+        "label": "Uređaj",
+        "datasource": { "type": "postgres", "uid": "${datasource}" },
+        "query": "SELECT DISTINCT device_id FROM analog_readings ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": null,
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "metric_name",
+        "type": "query",
+        "label": "Mjerenje",
+        "datasource": { "type": "postgres", "uid": "${datasource}" },
+        "query": "SELECT DISTINCT metric_name FROM analog_readings WHERE device_id IN (${device_id:singlequote}) ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": null,
+        "current": {},
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Mjerenja",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 18 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  device_id || ' / ' || metric_name AS metric,\n  AVG(value) AS value\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id IN (${device_id:singlequote})\n  AND metric_name IN (${metric_name:singlequote})\nGROUP BY 1, 2\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "prepareTimeSeries",
+          "options": {
+            "format": "wide"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": true,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "lineInterpolation": "linear"
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    }
+  ]
+}
