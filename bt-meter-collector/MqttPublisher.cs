@@ -41,6 +41,7 @@ internal sealed class MqttPublisher
                 .WithTopic($"rumenka/sensor/{filteredMac}/state")
                 .WithPayload(JsonSerializer.Serialize(new
                 {
+                    timestamp = now.ToString("O"),
                     rssi = sample.Rssi,
                     temperature = sample.Temperature,
                     humidity = sample.Humidity,

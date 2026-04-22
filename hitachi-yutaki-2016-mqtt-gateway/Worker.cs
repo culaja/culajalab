@@ -63,8 +63,9 @@ internal sealed class Worker : BackgroundService
                 var block2 = _modbusClient.ReadHoldingRegisters<short>(_modbusConfig.UnitId, 1050, 49).ToArray();
                 var block3 = _modbusClient.ReadHoldingRegisters<short>(_modbusConfig.UnitId, 1200, 32).ToArray();
 
+                var now = DateTime.UtcNow;
                 var groupSnapshots = System.Enum.GetValues<RegisterGroup>()
-                    .ToDictionary(g => g, _ => new Dictionary<string, object?>());
+                    .ToDictionary(g => g, _ => new Dictionary<string, object?> { ["timestamp"] = now.ToString("O") });
                 var changedGroups = new HashSet<RegisterGroup>();
 
                 foreach (var reg in RegisterDefinitions.All)
@@ -97,8 +98,6 @@ internal sealed class Worker : BackgroundService
                         }
                     }
                 }
-
-                var now = DateTime.UtcNow;
 
                 foreach (var group in System.Enum.GetValues<RegisterGroup>())
                 {

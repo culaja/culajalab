@@ -70,8 +70,10 @@ internal sealed class Worker : BackgroundService
     private async Task HandleHitachiMessageAsync(string payload, CancellationToken ct)
     {
         using var doc = JsonDocument.Parse(payload);
-        var now = DateTime.UtcNow;
         var deviceId = _consumerConfig.HitachiDeviceId;
+        var now = doc.RootElement.TryGetProperty("timestamp", out var ts)
+            ? DateTime.Parse(ts.GetString()!, null, System.Globalization.DateTimeStyles.RoundtripKind)
+            : DateTime.UtcNow;
 
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
@@ -127,7 +129,9 @@ internal sealed class Worker : BackgroundService
 
         using var doc = JsonDocument.Parse(payload);
         var root = doc.RootElement;
-        var now = DateTime.UtcNow;
+        var now = root.TryGetProperty("timestamp", out var ts)
+            ? DateTime.Parse(ts.GetString()!, null, System.Globalization.DateTimeStyles.RoundtripKind)
+            : DateTime.UtcNow;
 
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
