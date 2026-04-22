@@ -13,3 +13,8 @@ services:
     build:
       context: ./hitachi-yutaki-2016-mqtt-gateway
     image: ghcr.io/culaja/hitachi-yutaki-2016-mqtt-gateway:latest
+
+  mqtt-timescale-consumer:
+    build:
+      context: ./mqtt-timescale-consumer
+    image: ghcr.io/culaja/mqtt-timescale-consumer:latest

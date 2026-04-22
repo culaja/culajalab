@@ -23,6 +23,8 @@ jobs:
             context: ./ha-device-registrar
           - image: hitachi-yutaki-2016-mqtt-gateway
             context: ./hitachi-yutaki-2016-mqtt-gateway
+          - image: mqtt-timescale-consumer
+            context: ./mqtt-timescale-consumer
 
     steps:
       - name: Checkout
