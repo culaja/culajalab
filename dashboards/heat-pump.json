@@ -1,0 +1,246 @@
+{
+  "title": "Hitachi Yutaki 2016",
+  "uid": "hitachi-yutaki-2016",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "tags": ["heat-pump", "hitachi"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Data Source",
+        "query": "postgres",
+        "refresh": 1,
+        "hide": 0
+      },
+      {
+        "name": "sensor_mac",
+        "type": "textbox",
+        "label": "Sensor MAC",
+        "query": "A4C1380875B0",
+        "current": { "text": "A4C1380875B0", "value": "A4C1380875B0" },
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "COP (hourly)",
+      "description": "Coefficient of Performance — toplinska energija / utrošena električna energija po satu",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  time_bucket('1h', time) AS time,\n  (MAX(CASE WHEN metric_name = 'unit_capacity'         THEN value END) - MIN(CASE WHEN metric_name = 'unit_capacity'         THEN value END)) /\n  NULLIF(\n    MAX(CASE WHEN metric_name = 'unit_power_consumption' THEN value END) - MIN(CASE WHEN metric_name = 'unit_power_consumption' THEN value END),\n  0) AS \"COP\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN ('unit_capacity', 'unit_power_consumption')\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "decimals": 2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "hidden" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Water ΔT (outlet − inlet)",
+      "description": "Razlika temperature izlazne i ulazne vode. Normalno 5–10 °C.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature' THEN value END) -\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'  THEN value END) AS \"ΔT (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN ('water_outlet_temperature', 'water_inlet_temperature')\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "celsius",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "hidden" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Kompressor",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Frekvencija (Hz)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_frequency'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Struja (A)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_current'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 0 },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Struja (A)" },
+            "properties": [
+              { "id": "custom.axisPlacement", "value": "right" }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Temperature — vanjska / inlet / outlet / setpoint",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'outdoor_ambient_temperature'          THEN value END) AS \"Vanjska (°C)\",\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'              THEN value END) AS \"Ulazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature'             THEN value END) AS \"Izlazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'status_circuit1_water_heating_setpoint' THEN value END) AS \"Setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN (\n    'outdoor_ambient_temperature',\n    'water_inlet_temperature',\n    'water_outlet_temperature',\n    'status_circuit1_water_heating_setpoint'\n  )\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 0 },
+          "unit": "celsius",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Temperatura prostorije vs setpoint",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Prostorija — BLE senzor (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = '${sensor_mac}'\n  AND metric_name = 'temperature'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Thermostat setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'status_circuit1_thermostat_setpoint'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "celsius",
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Thermostat setpoint (°C)" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Stanje rada pumpe",
+      "type": "state-timeline",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "${datasource}" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "${datasource}" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  time,\n  value AS \"Operation State\"\nFROM status_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'operation_state'\nORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 1 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "mergeValues": true,
+        "rowHeight": 0.9
+      }
+    }
+  ]
+}
