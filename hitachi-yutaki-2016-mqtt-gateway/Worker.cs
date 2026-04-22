@@ -238,6 +238,13 @@ internal sealed class Worker : BackgroundService
 
     private static bool TryParseWriteValue(RegisterDefinition reg, string payload, out short rawValue)
     {
+        if (reg.Kind == RegisterKind.Analog &&
+            double.TryParse(payload, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var engValue))
+        {
+            rawValue = (short)Math.Round(engValue / reg.Scale);
+            return true;
+        }
+
         if (short.TryParse(payload, out rawValue))
             return true;
 
@@ -250,12 +257,6 @@ internal sealed class Worker : BackgroundService
                 rawValue = (short)match.Key;
                 return true;
             }
-        }
-
-        if (reg.Kind == RegisterKind.Analog && double.TryParse(payload, out var engValue))
-        {
-            rawValue = (short)Math.Round(engValue / reg.Scale);
-            return true;
         }
 
         rawValue = 0;
