@@ -4,7 +4,7 @@ internal enum RegisterKind { Analog, Enum, Bitmask, Raw }
 
 internal enum RegisterGroup { Unit, Circuit1, Circuit2, Dhw, Pool, Diagnostics }
 
-internal sealed class RegisterDefinition
+internal sealed record RegisterDefinition
 {
     public required ushort Address { get; init; }
     public required string Name { get; init; }
@@ -17,4 +17,5 @@ internal sealed class RegisterDefinition
     public string? BitmaskPrefix { get; init; }
     public IReadOnlyDictionary<int, string>? EnumValues { get; init; }
     public IReadOnlyDictionary<int, string>? BitNames { get; init; }
+    public string? Description { get; init; }
 }
