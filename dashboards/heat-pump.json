@@ -1,266 +1,1102 @@
 {
-  "title": "Hitachi Yutaki 2016",
-  "uid": "hitachi-yutaki-2016",
-  "schemaVersion": 39,
-  "version": 1,
-  "refresh": "30s",
-  "graphTooltip": 1,
-  "timezone": "browser",
-  "time": { "from": "now-24h", "to": "now" },
-  "tags": ["heat-pump", "hitachi"],
-  "templating": {
-    "list": [
-      {
-        "name": "datasource",
-        "type": "datasource",
-        "label": "Data Source",
-        "query": "postgres",
-        "refresh": 1,
-        "hide": 0
-      },
-      {
-        "name": "sensor_mac",
-        "type": "textbox",
-        "label": "Sensor MAC",
-        "query": "A4C1380875B0",
-        "current": { "text": "A4C1380875B0", "value": "A4C1380875B0" },
-        "hide": 0
-      }
-    ]
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "hitachi-yutaki-2016"
   },
-  "annotations": { "list": [] },
-  "panels": [
-    {
-      "id": 1,
-      "title": "COP (hourly)",
-      "description": "Coefficient of Performance — toplinska energija / utrošena električna energija po satu",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
-      "datasource": { "type": "postgres", "uid": "${datasource}" },
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  time_bucket('1h', time) AS time,\n  SUM(GREATEST(COALESCE(capacity_delta, 0), 0)) AS \"Kapacitet (kWh)\",\n  SUM(GREATEST(COALESCE(power_delta, 0), 0)) AS \"Potrošnja (kWh)\",\n  CASE\n    WHEN SUM(GREATEST(COALESCE(capacity_delta, 0), 0)) = 0\n     AND SUM(GREATEST(COALESCE(power_delta, 0), 0)) > 0 THEN NULL\n    ELSE SUM(GREATEST(COALESCE(capacity_delta, 0), 0)) /\n         NULLIF(SUM(GREATEST(COALESCE(power_delta, 0), 0)), 0)\n  END AS \"COP\"\nFROM (\n  SELECT\n    time,\n    CASE WHEN metric_name = 'unit_capacity'\n      THEN value - LAG(value) OVER (PARTITION BY metric_name ORDER BY time) END AS capacity_delta,\n    CASE WHEN metric_name = 'unit_power_consumption'\n      THEN value - LAG(value) OVER (PARTITION BY metric_name ORDER BY time) END AS power_delta\n  FROM analog_readings\n  WHERE $__timeFilter(time)\n    AND device_id = 'yutaki2016'\n    AND metric_name IN ('unit_capacity', 'unit_power_consumption')\n) sub\nGROUP BY 1\nORDER BY 1",
-          "refId": "A"
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana",
+            "version": "v0",
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "spec": {}
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "builtIn": true
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "green" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
-          "decimals": 2,
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": { "mode": "single" },
-        "legend": { "displayMode": "hidden" }
       }
-    },
-    {
-      "id": 2,
-      "title": "Water ΔT (outlet − inlet)",
-      "description": "Razlika temperature izlazne i ulazne vode. Normalno 5–10 °C.",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
-      "datasource": { "type": "postgres", "uid": "${datasource}" },
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature' THEN value END) -\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'  THEN value END) AS \"ΔT (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN ('water_outlet_temperature', 'water_inlet_temperature')\nGROUP BY 1\nORDER BY 1",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "orange" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
-          "unit": "celsius",
-          "decimals": 1
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": { "mode": "single" },
-        "legend": { "displayMode": "hidden" }
-      }
-    },
-    {
-      "id": 3,
-      "title": "Kompressor",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "postgres", "uid": "${datasource}" },
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Frekvencija (Hz)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_frequency'\nGROUP BY 1\nORDER BY 1",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Struja (A)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_current'\nGROUP BY 1\nORDER BY 1",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 0, "spanNulls": true },
-          "decimals": 1
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Struja (A)" },
-            "properties": [
-              { "id": "custom.axisPlacement", "value": "right" }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "tooltip": { "mode": "multi" },
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "id": 4,
-      "title": "Temperature — vanjska / inlet / outlet / setpoint",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "postgres", "uid": "${datasource}" },
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'outdoor_ambient_temperature'          THEN value END) AS \"Vanjska (°C)\",\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'              THEN value END) AS \"Ulazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature'             THEN value END) AS \"Izlazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'status_circuit1_water_heating_setpoint' THEN value END) AS \"Setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN (\n    'outdoor_ambient_temperature',\n    'water_inlet_temperature',\n    'water_outlet_temperature',\n    'status_circuit1_water_heating_setpoint'\n  )\nGROUP BY 1\nORDER BY 1",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 0, "spanNulls": true },
-          "unit": "celsius",
-          "decimals": 1
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": { "mode": "multi" },
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "id": 5,
-      "title": "Temperatura prostorije vs setpoint",
-      "type": "timeseries",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "postgres", "uid": "${datasource}" },
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Prostorija — BLE senzor (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = '${sensor_mac}'\n  AND metric_name = 'temperature'\nGROUP BY 1\nORDER BY 1",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Thermostat setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'status_circuit1_thermostat_setpoint'\nGROUP BY 1\nORDER BY 1",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "spanNulls": true },
-          "unit": "celsius",
-          "decimals": 1
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Thermostat setpoint (°C)" },
-            "properties": [
-              { "id": "custom.lineStyle", "value": { "fill": "solid" } },
-              { "id": "custom.fillOpacity", "value": 0 },
-              { "id": "custom.spanNulls", "value": true }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "tooltip": { "mode": "multi" },
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "id": 6,
-      "title": "Stanje rada pumpe",
-      "type": "state-timeline",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "postgres", "uid": "${datasource}" },
-      "targets": [
-        {
-          "datasource": { "type": "postgres", "uid": "${datasource}" },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  time,\n  value AS \"Operation State\"\nFROM status_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'operation_state'\nORDER BY time",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "fixed" },
-          "custom": { "lineWidth": 1, "fillOpacity": 70 },
-          "mappings": [
-            {
-              "type": "value",
+    ],
+    "cursorSync": "Tooltip",
+    "editable": true,
+    "elements": {
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "id": 3,
+          "title": "Kompressor",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Frekvencija (Hz)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_frequency'\nGROUP BY 1\nORDER BY 1",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
               "options": {
-                "OFF":             { "color": "gray",         "index": 0  },
-                "Cool Demand-OFF": { "color": "light-blue",   "index": 1  },
-                "Cool Thermo-OFF": { "color": "blue",         "index": 2  },
-                "Cool Thermo-ON":  { "color": "dark-blue",    "index": 3  },
-                "Heat Demand-OFF": { "color": "light-orange", "index": 4  },
-                "Heat Thermo-OFF": { "color": "orange",       "index": 5  },
-                "Heat Thermo-ON":  { "color": "dark-orange",  "index": 6  },
-                "DHW-OFF":         { "color": "light-purple", "index": 7  },
-                "DHW-ON":          { "color": "purple",       "index": 8  },
-                "SWP-OFF":         { "color": "light-green",  "index": 9  },
-                "SWP-ON":          { "color": "green",        "index": 10 },
-                "Alarm":           { "color": "red",          "index": 11 }
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "rothz",
+                  "decimals": 1,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "blue"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 27,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": true,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Struja (A)"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.axisPlacement",
+                        "value": "right"
+                      }
+                    ]
+                  }
+                ]
               }
             }
-          ]
-        },
-        "overrides": []
+          }
+        }
       },
-      "options": {
-        "tooltip": { "mode": "single" },
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "mergeValues": true,
-        "rowHeight": 0.9
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "id": 4,
+          "title": "Temperature",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'outdoor_ambient_temperature'          THEN value END) AS \"Vanjska (°C)\",\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'              THEN value END) AS \"Ulazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature'             THEN value END) AS \"Izlazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'svc_water_temp_setting' THEN value END) AS \"Setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN (\n    'outdoor_ambient_temperature',\n    'water_inlet_temperature',\n    'water_outlet_temperature',\n    'svc_water_temp_setting'\n  )\nGROUP BY 1\nORDER BY 1",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "celsius",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": true,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "id": 5,
+          "title": "Temperatura prostorije vs setpoint",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Prostorija — BLE senzor (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = '${sensor_mac}'\n  AND metric_name = 'temperature'\nGROUP BY 1\nORDER BY 1"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Thermostat setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'status_circuit1_thermostat_setpoint'\nGROUP BY 1\nORDER BY 1"
+                      }
+                    },
+                    "refId": "B",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "celsius",
+                  "decimals": 1,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": true,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Thermostat setpoint (°C)"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.lineStyle",
+                        "value": {
+                          "fill": "solid"
+                        }
+                      },
+                      {
+                        "id": "custom.fillOpacity",
+                        "value": 0
+                      },
+                      {
+                        "id": "custom.spanNulls",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "id": 6,
+          "title": "Stanje rada pumpe",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\n  time,\n  value AS \"Operation State\"\nFROM status_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'operation_state'\nORDER BY time"
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "state-timeline",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "alignValue": "left",
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "mergeValues": true,
+                "rowHeight": 0.9,
+                "showValue": "auto",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "Alarm": {
+                          "color": "red",
+                          "index": 11
+                        },
+                        "Cool Demand-OFF": {
+                          "color": "light-blue",
+                          "index": 1
+                        },
+                        "Cool Thermo-OFF": {
+                          "color": "blue",
+                          "index": 2
+                        },
+                        "Cool Thermo-ON": {
+                          "color": "dark-blue",
+                          "index": 3
+                        },
+                        "DHW-OFF": {
+                          "color": "light-purple",
+                          "index": 7
+                        },
+                        "DHW-ON": {
+                          "color": "purple",
+                          "index": 8
+                        },
+                        "Heat Demand-OFF": {
+                          "color": "light-orange",
+                          "index": 4
+                        },
+                        "Heat Thermo-OFF": {
+                          "color": "orange",
+                          "index": 5
+                        },
+                        "Heat Thermo-ON": {
+                          "color": "dark-orange",
+                          "index": 6
+                        },
+                        "OFF": {
+                          "color": "gray",
+                          "index": 0
+                        },
+                        "SWP-OFF": {
+                          "color": "light-green",
+                          "index": 9
+                        },
+                        "SWP-ON": {
+                          "color": "green",
+                          "index": 10
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "fixed"
+                  },
+                  "custom": {
+                    "axisPlacement": "auto",
+                    "fillOpacity": 70,
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineWidth": 1,
+                    "spanNulls": false
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "id": 7,
+          "title": "COP (hourly)",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": " WITH hourly AS (                                                                                                                                                                                                                                                                                                 \r\n    SELECT                               \r\n      bucket AT TIME ZONE 'Europe/Belgrade' AS bucket,                                                                                                                                                                                                                                                             \r\n      metric_name,\r\n      (max_val - first_val) + CASE WHEN last_val < first_val THEN last_val ELSE 0 END AS kwh                                                                                                                                                                                                                       \r\n    FROM analog_hourly                                         \r\n    WHERE $__timeFilter(bucket)\r\n      AND device_id = 'yutaki2016'\r\n      AND metric_name IN ('unit_capacity', 'unit_power_consumption')\r\n  )\r\n  SELECT\r\n    bucket AS time,\r\n    SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) AS \"Proizvedena toplotna energija (kWh)\",\r\n    SUM(CASE WHEN metric_name = 'unit_power_consumption'  THEN kwh END) AS \"Utrošena električna energija (kWh)\",\r\n    CASE\r\n      WHEN SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) = 0\r\n       AND SUM(CASE WHEN metric_name = 'unit_power_consumption'  THEN kwh END) > 0 THEN NULL\r\n      ELSE SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) /\r\n           NULLIF(SUM(CASE WHEN metric_name = 'unit_power_consumption' THEN kwh END), 0)\r\n    END AS \"COP\"\r\n  FROM hourly\r\n  GROUP BY 1\r\n  ORDER BY 1\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "kwatth",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": true,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.5,
+                    "drawStyle": "bars",
+                    "fillOpacity": 40,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "always",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "scope": "series",
+                      "options": "COP"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.axisPlacement",
+                        "value": "right"
+                      },
+                      {
+                        "id": "unit",
+                        "value": "none"
+                      },
+                      {
+                        "id": "custom.drawStyle",
+                        "value": "line"
+                      },
+                      {
+                        "id": "custom.lineWidth",
+                        "value": 2
+                      },
+                      {
+                        "id": "custom.lineInterpolation",
+                        "value": "linear"
+                      },
+                      {
+                        "id": "custom.spanNulls",
+                        "value": true
+                      },
+                      {
+                        "id": "custom.fillOpacity",
+                        "value": 0
+                      },
+                      {
+                        "id": "custom.showValues",
+                        "value": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "id": 8,
+          "title": "Temperaturna razlika (ΔT)",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT                                                                                                                                                                                                                                                                                                           \r\n    $__timeGroupAlias(time, $__interval),\r\n    AVG(CASE WHEN metric_name = 'water_outlet_temperature' THEN value END) -                                                                                                                                                                                                                                       \r\n    AVG(CASE WHEN metric_name = 'water_inlet_temperature'  THEN value END) AS \"ΔT (°C)\"                                                                                                                                                                                                                            \r\n  FROM analog_readings                                                                                                                                                                                                                                                                                             \r\n  WHERE $__timeFilter(time)                                 \r\n    AND device_id = 'yutaki2016'\r\n    AND metric_name IN ('water_outlet_temperature', 'water_inlet_temperature')\r\n  GROUP BY 1\r\n  ORDER BY 1\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "celsius",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 25,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
       }
-    }
-  ]
+    },
+    "layout": {
+      "kind": "GridLayout",
+      "spec": {
+        "items": [
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-6"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-4"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-7"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 12,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-8"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 16,
+              "width": 12,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-5"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 12,
+              "y": 16,
+              "width": 12,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-3"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [
+      "heat-pump",
+      "hitachi"
+    ],
+    "timeSettings": {
+      "timezone": "browser",
+      "from": "now/d",
+      "to": "now",
+      "autoRefresh": "30s",
+      "autoRefreshIntervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "hideTimepicker": false,
+      "fiscalYearStartMonth": 0
+    },
+    "title": "Toplotna Pumpa",
+    "variables": [
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "name": "datasource",
+          "pluginId": "postgres",
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "current": {
+            "text": "timescaledb",
+            "value": "ffjuvufka3mrkd"
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "label": "Data Source",
+          "hide": "hideVariable",
+          "skipUrlSync": false,
+          "allowCustomValue": true
+        }
+      },
+      {
+        "kind": "TextVariable",
+        "spec": {
+          "name": "sensor_mac",
+          "current": {
+            "text": "A4C1380875B0",
+            "value": "A4C1380875B0"
+          },
+          "query": "A4C1380875B0",
+          "label": "Sensor MAC",
+          "hide": "hideVariable",
+          "skipUrlSync": false
+        }
+      }
+    ]
+  }
 }
