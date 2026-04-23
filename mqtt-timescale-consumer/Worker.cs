@@ -201,7 +201,7 @@ internal sealed class Worker : BackgroundService
             SELECT add_compression_policy('analog_readings', INTERVAL '30 days', if_not_exists => TRUE);
             SELECT add_compression_policy('status_readings', INTERVAL '30 days', if_not_exists => TRUE);
 
-            CREATE MATERIALIZED VIEW IF NOT EXISTS cop_hourly
+            CREATE MATERIALIZED VIEW IF NOT EXISTS analog_hourly
             WITH (timescaledb.continuous) AS
             SELECT
                 time_bucket('1h', time) AS bucket,
@@ -216,10 +216,31 @@ internal sealed class Worker : BackgroundService
             GROUP BY 1, 2, 3
             WITH NO DATA;
 
-            SELECT add_continuous_aggregate_policy('cop_hourly',
+            SELECT add_continuous_aggregate_policy('analog_hourly',
                 start_offset      => INTERVAL '3h',
                 end_offset        => INTERVAL '1h',
                 schedule_interval => INTERVAL '1h',
+                if_not_exists     => TRUE);
+
+            CREATE MATERIALIZED VIEW IF NOT EXISTS analog_daily
+            WITH (timescaledb.continuous) AS
+            SELECT
+                time_bucket('1 day', time, 'Europe/Belgrade') AS bucket,
+                device_id,
+                metric_name,
+                first(value, time) AS first_val,
+                last(value, time)  AS last_val,
+                min(value)         AS min_val,
+                max(value)         AS max_val,
+                avg(value)         AS avg_val
+            FROM analog_readings
+            GROUP BY 1, 2, 3
+            WITH NO DATA;
+
+            SELECT add_continuous_aggregate_policy('analog_daily',
+                start_offset      => INTERVAL '3 days',
+                end_offset        => INTERVAL '1 day',
+                schedule_interval => INTERVAL '1 day',
                 if_not_exists     => TRUE);
             """, conn);
 
