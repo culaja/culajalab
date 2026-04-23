@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "hitachi-yutaki-2016-mqtt-ga
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "mqtt-timescale-consumer", "mqtt-timescale-consumer\mqtt-timescale-consumer.csproj", "{F88CEDBF-C96D-4202-8A2E-9A9563561825}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "energy-spectrum-collector", "energy-spectrum-collector\energy-spectrum-collector.csproj", "{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -66,6 +68,18 @@ Global
 		{F88CEDBF-C96D-4202-8A2E-9A9563561825}.Release|x64.Build.0 = Release|Any CPU
 		{F88CEDBF-C96D-4202-8A2E-9A9563561825}.Release|x86.ActiveCfg = Release|Any CPU
 		{F88CEDBF-C96D-4202-8A2E-9A9563561825}.Release|x86.Build.0 = Release|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Debug|x64.Build.0 = Debug|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Debug|x86.Build.0 = Debug|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Release|x64.ActiveCfg = Release|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Release|x64.Build.0 = Release|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Release|x86.ActiveCfg = Release|Any CPU
+		{81FEAFB0-9D52-4FBD-BA29-6FE2E4734C43}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

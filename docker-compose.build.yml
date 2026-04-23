@@ -18,3 +18,8 @@ services:
     build:
       context: ./mqtt-timescale-consumer
     image: ghcr.io/culaja/mqtt-timescale-consumer:latest
+
+  energy-spectrum-collector:
+    build:
+      context: ./energy-spectrum-collector
+    image: ghcr.io/culaja/energy-spectrum-collector:latest
