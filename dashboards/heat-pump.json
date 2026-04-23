@@ -33,7 +33,7 @@
         "kind": "Panel",
         "spec": {
           "id": 3,
-          "title": "Kompressor",
+          "title": "Compressor",
           "description": "",
           "links": [],
           "data": {
@@ -54,7 +54,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Frekvencija (Hz)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_frequency'\nGROUP BY 1\nORDER BY 1",
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Frequency (Hz)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name = 'svc_compressor_frequency'\nGROUP BY 1\nORDER BY 1",
                         "sql": {
                           "columns": [
                             {
@@ -165,7 +165,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Struja (A)"
+                      "options": "Current (A)"
                     },
                     "properties": [
                       {
@@ -205,7 +205,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'outdoor_ambient_temperature'          THEN value END) AS \"Vanjska (°C)\",\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'              THEN value END) AS \"Ulazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature'             THEN value END) AS \"Izlazna voda (°C)\",\n  AVG(CASE WHEN metric_name = 'svc_water_temp_setting' THEN value END) AS \"Setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN (\n    'outdoor_ambient_temperature',\n    'water_inlet_temperature',\n    'water_outlet_temperature',\n    'svc_water_temp_setting'\n  )\nGROUP BY 1\nORDER BY 1",
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(CASE WHEN metric_name = 'outdoor_ambient_temperature'          THEN value END) AS \"Outdoor (°C)\",\n  AVG(CASE WHEN metric_name = 'water_inlet_temperature'              THEN value END) AS \"Water Inlet (°C)\",\n  AVG(CASE WHEN metric_name = 'water_outlet_temperature'             THEN value END) AS \"Water Outlet (°C)\",\n  AVG(CASE WHEN metric_name = 'svc_water_temp_setting' THEN value END) AS \"Setpoint (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN (\n    'outdoor_ambient_temperature',\n    'water_inlet_temperature',\n    'water_outlet_temperature',\n    'svc_water_temp_setting'\n  )\nGROUP BY 1\nORDER BY 1",
                         "sql": {
                           "columns": [
                             {
@@ -320,7 +320,7 @@
         "kind": "Panel",
         "spec": {
           "id": 5,
-          "title": "Temperatura prostorije vs setpoint",
+          "title": "Room Temperature vs Setpoint",
           "description": "",
           "links": [],
           "data": {
@@ -341,7 +341,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Prostorija — BLE senzor (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = '${sensor_mac}'\n  AND metric_name = 'temperature'\nGROUP BY 1\nORDER BY 1"
+                        "rawSql": "SELECT\n  $__timeGroupAlias(time, $__interval),\n  AVG(value) AS \"Room — BLE Sensor (°C)\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = '${sensor_mac}'\n  AND metric_name = 'temperature'\nGROUP BY 1\nORDER BY 1"
                       }
                     },
                     "refId": "A",
@@ -484,7 +484,7 @@
         "kind": "Panel",
         "spec": {
           "id": 6,
-          "title": "Stanje rada pumpe",
+          "title": "Heat Pump Operation State",
           "description": "",
           "links": [],
           "data": {
@@ -659,7 +659,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": " WITH hourly AS (                                                                                                                                                                                                                                                                                                 \r\n    SELECT                               \r\n      bucket AT TIME ZONE 'Europe/Belgrade' AS bucket,                                                                                                                                                                                                                                                             \r\n      metric_name,\r\n      (max_val - first_val) + CASE WHEN last_val < first_val THEN last_val ELSE 0 END AS kwh                                                                                                                                                                                                                       \r\n    FROM analog_hourly                                         \r\n    WHERE $__timeFilter(bucket)\r\n      AND device_id = 'yutaki2016'\r\n      AND metric_name IN ('unit_capacity', 'unit_power_consumption')\r\n  )\r\n  SELECT\r\n    bucket AS time,\r\n    SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) AS \"Proizvedena toplotna energija (kWh)\",\r\n    SUM(CASE WHEN metric_name = 'unit_power_consumption'  THEN kwh END) AS \"Utrošena električna energija (kWh)\",\r\n    CASE\r\n      WHEN SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) = 0\r\n       AND SUM(CASE WHEN metric_name = 'unit_power_consumption'  THEN kwh END) > 0 THEN NULL\r\n      ELSE SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) /\r\n           NULLIF(SUM(CASE WHEN metric_name = 'unit_power_consumption' THEN kwh END), 0)\r\n    END AS \"COP\"\r\n  FROM hourly\r\n  GROUP BY 1\r\n  ORDER BY 1\r\n",
+                        "rawSql": " WITH hourly AS (                                                                                                                                                                                                                                                                                                 \r\n    SELECT                               \r\n      bucket AT TIME ZONE 'Europe/Belgrade' AS bucket,                                                                                                                                                                                                                                                             \r\n      metric_name,\r\n      (max_val - first_val) + CASE WHEN last_val < first_val THEN last_val ELSE 0 END AS kwh                                                                                                                                                                                                                       \r\n    FROM analog_hourly                                         \r\n    WHERE $__timeFilter(bucket)\r\n      AND device_id = 'yutaki2016'\r\n      AND metric_name IN ('unit_capacity', 'unit_power_consumption')\r\n  )\r\n  SELECT\r\n    bucket AS time,\r\n    SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) AS \"Thermal Energy Produced (kWh)\",\r\n    SUM(CASE WHEN metric_name = 'unit_power_consumption'  THEN kwh END) AS \"Electrical Energy Consumed (kWh)\",\r\n    CASE\r\n      WHEN SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) = 0\r\n       AND SUM(CASE WHEN metric_name = 'unit_power_consumption'  THEN kwh END) > 0 THEN NULL\r\n      ELSE SUM(CASE WHEN metric_name = 'unit_capacity'          THEN kwh END) /\r\n           NULLIF(SUM(CASE WHEN metric_name = 'unit_power_consumption' THEN kwh END), 0)\r\n    END AS \"COP\"\r\n  FROM hourly\r\n  GROUP BY 1\r\n  ORDER BY 1\r\n",
                         "sql": {
                           "columns": [
                             {
@@ -816,7 +816,7 @@
         "kind": "Panel",
         "spec": {
           "id": 8,
-          "title": "Temperaturna razlika (ΔT)",
+          "title": "Temperature Difference (ΔT)",
           "description": "",
           "links": [],
           "data": {
@@ -1061,26 +1061,16 @@
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0
     },
-    "title": "Toplotna Pumpa",
+    "title": "Heat Pump",
     "variables": [
       {
-        "kind": "DatasourceVariable",
+        "kind": "ConstantVariable",
         "spec": {
           "name": "datasource",
-          "pluginId": "postgres",
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "current": {
-            "text": "timescaledb",
-            "value": "ffjuvufka3mrkd"
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
+          "value": "timescaledb",
           "label": "Data Source",
           "hide": "hideVariable",
-          "skipUrlSync": false,
-          "allowCustomValue": true
+          "skipUrlSync": false
         }
       },
       {
