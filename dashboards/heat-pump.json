@@ -41,9 +41,9 @@
         {
           "datasource": { "type": "postgres", "uid": "${datasource}" },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  time_bucket('1h', time) AS time,\n  (MAX(CASE WHEN metric_name = 'unit_capacity'         THEN value END) - MIN(CASE WHEN metric_name = 'unit_capacity'         THEN value END)) /\n  NULLIF(\n    MAX(CASE WHEN metric_name = 'unit_power_consumption' THEN value END) - MIN(CASE WHEN metric_name = 'unit_power_consumption' THEN value END),\n  0) AS \"COP\"\nFROM analog_readings\nWHERE $__timeFilter(time)\n  AND device_id = 'yutaki2016'\n  AND metric_name IN ('unit_capacity', 'unit_power_consumption')\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  time_bucket('1h', time) AS time,\n  SUM(GREATEST(COALESCE(capacity_delta, 0), 0)) AS \"Kapacitet (kWh)\",\n  SUM(GREATEST(COALESCE(power_delta, 0), 0)) AS \"Potrošnja (kWh)\",\n  CASE\n    WHEN SUM(GREATEST(COALESCE(capacity_delta, 0), 0)) = 0\n     AND SUM(GREATEST(COALESCE(power_delta, 0), 0)) > 0 THEN NULL\n    ELSE SUM(GREATEST(COALESCE(capacity_delta, 0), 0)) /\n         NULLIF(SUM(GREATEST(COALESCE(power_delta, 0), 0)), 0)\n  END AS \"COP\"\nFROM (\n  SELECT\n    time,\n    CASE WHEN metric_name = 'unit_capacity'\n      THEN value - LAG(value) OVER (PARTITION BY metric_name ORDER BY time) END AS capacity_delta,\n    CASE WHEN metric_name = 'unit_power_consumption'\n      THEN value - LAG(value) OVER (PARTITION BY metric_name ORDER BY time) END AS power_delta\n  FROM analog_readings\n  WHERE $__timeFilter(time)\n    AND device_id = 'yutaki2016'\n    AND metric_name IN ('unit_capacity', 'unit_power_consumption')\n) sub\nGROUP BY 1\nORDER BY 1",
           "refId": "A"
         }
       ],
