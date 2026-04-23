@@ -217,7 +217,7 @@ internal sealed class Worker : BackgroundService
             WITH NO DATA;
 
             SELECT add_continuous_aggregate_policy('cop_hourly',
-                start_offset      => INTERVAL '2h',
+                start_offset      => INTERVAL '3h',
                 end_offset        => INTERVAL '1h',
                 schedule_interval => INTERVAL '1h',
                 if_not_exists     => TRUE);
