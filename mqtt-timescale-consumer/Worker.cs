@@ -84,7 +84,7 @@ internal sealed class Worker : BackgroundService
             if (prop.Value.ValueKind == JsonValueKind.Number)
             {
                 var cmd = batch.CreateBatchCommand();
-                cmd.CommandText = "INSERT INTO analog_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'heat_pump', $2, $3, $4)";
+                cmd.CommandText = "INSERT INTO analog_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'heat_pump', $2, $3, $4) ON CONFLICT DO NOTHING";
                 cmd.Parameters.Add(new NpgsqlParameter { Value = now });
                 cmd.Parameters.Add(new NpgsqlParameter { Value = deviceId });
                 cmd.Parameters.Add(new NpgsqlParameter { Value = prop.Name });
@@ -94,7 +94,7 @@ internal sealed class Worker : BackgroundService
             else if (prop.Value.ValueKind == JsonValueKind.String)
             {
                 var cmd = batch.CreateBatchCommand();
-                cmd.CommandText = "INSERT INTO status_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'heat_pump', $2, $3, $4)";
+                cmd.CommandText = "INSERT INTO status_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'heat_pump', $2, $3, $4) ON CONFLICT DO NOTHING";
                 cmd.Parameters.Add(new NpgsqlParameter { Value = now });
                 cmd.Parameters.Add(new NpgsqlParameter { Value = deviceId });
                 cmd.Parameters.Add(new NpgsqlParameter { Value = prop.Name });
@@ -104,7 +104,7 @@ internal sealed class Worker : BackgroundService
             else if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
             {
                 var cmd = batch.CreateBatchCommand();
-                cmd.CommandText = "INSERT INTO analog_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'heat_pump', $2, $3, $4)";
+                cmd.CommandText = "INSERT INTO analog_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'heat_pump', $2, $3, $4) ON CONFLICT DO NOTHING";
                 cmd.Parameters.Add(new NpgsqlParameter { Value = now });
                 cmd.Parameters.Add(new NpgsqlParameter { Value = deviceId });
                 cmd.Parameters.Add(new NpgsqlParameter { Value = prop.Name });
@@ -142,7 +142,7 @@ internal sealed class Worker : BackgroundService
             if (prop.Value.ValueKind != JsonValueKind.Number) continue;
 
             var cmd = batch.CreateBatchCommand();
-            cmd.CommandText = "INSERT INTO analog_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'thermometer', $2, $3, $4)";
+            cmd.CommandText = "INSERT INTO analog_readings (time, device_type, device_id, metric_name, value) VALUES ($1, 'thermometer', $2, $3, $4) ON CONFLICT DO NOTHING";
             cmd.Parameters.Add(new NpgsqlParameter { Value = now });
             cmd.Parameters.Add(new NpgsqlParameter { Value = mac });
             cmd.Parameters.Add(new NpgsqlParameter { Value = prop.Name });
@@ -183,6 +183,9 @@ internal sealed class Worker : BackgroundService
                 chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);
             SELECT create_hypertable('status_readings', 'time',
                 chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS analog_readings_unique ON analog_readings (time, device_id, metric_name);
+            CREATE UNIQUE INDEX IF NOT EXISTS status_readings_unique ON status_readings (time, device_id, metric_name);
 
             CREATE INDEX IF NOT EXISTS analog_readings_lookup ON analog_readings (device_id, metric_name, time DESC);
             CREATE INDEX IF NOT EXISTS status_readings_lookup ON status_readings (device_id, metric_name, time DESC);
